@@ -74,6 +74,8 @@ static class L
         ["NotScanned"] = ("…", "…"),
         ["AccessDenied"] = ("(nepřístupné)", "(access denied)"),
         ["Link"] = ("(odkaz)", "(link)"),
+        ["HardLink"] = ("(pevný odkaz – velikost započtena jinde)", "(hard link – size counted elsewhere)"),
+        ["MftFallback"] = ("Čtení MFT selhalo, použito procházení složek: {0}", "Reading the MFT failed, folders were enumerated instead: {0}"),
         ["Open"] = ("Otevřít", "Open"),
         ["Reveal"] = ("Zobrazit v Průzkumníku", "Show in Explorer"),
         ["CopyPath"] = ("Kopírovat cestu", "Copy path"),

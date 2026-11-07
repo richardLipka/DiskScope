@@ -16,6 +16,8 @@ public enum NodeFlags : ushort
     /// <summary>Junction or symbolic link; not followed.</summary>
     Reparse = 16,
     Deleted = 32,
+    /// <summary>A further name (hard link) of a file listed elsewhere; its size is counted there.</summary>
+    HardLink = 64,
 }
 
 /// <summary>
@@ -237,6 +239,47 @@ public sealed class NodeStore
         }
     }
 
+    /// <summary>
+    /// Fills in directory totals by a post-order walk from the root; works whatever the index order.
+    /// Directories are marked scanned on the way. Nodes not reachable from the root are ignored.
+    /// </summary>
+    internal void ComputeTotalsFromRoot()
+    {
+        var stack = new Stack<(int Node, bool Done)>();
+        stack.Push((Root, false));
+        while (stack.Count > 0)
+        {
+            var (node, done) = stack.Pop();
+            ref var n = ref this[node];
+            if (!done)
+            {
+                stack.Push((node, true));
+                for (int c = n.FirstChild; c != None; c = this[c].NextSibling)
+                    if (this[c].IsDirectory) stack.Push((c, false));
+                continue;
+            }
+            long size = 0, length = 0;
+            int files = 0, dirs = 0;
+            for (int c = n.FirstChild; c != None; c = this[c].NextSibling)
+            {
+                ref var ch = ref this[c];
+                size += ch.Size;
+                length += ch.Length;
+                if (ch.IsDirectory)
+                {
+                    files += ch.FileCount;
+                    dirs += ch.DirCount + 1;
+                }
+                else files++;
+            }
+            n.Size = size;
+            n.Length = length;
+            n.FileCount = files;
+            n.DirCount = dirs;
+            n.Flags |= NodeFlags.Scanned;
+        }
+    }
+
     public string GetPath(int index)
     {
         var parts = new List<string>();
@@ -317,6 +360,19 @@ public sealed class NodeStore
         AddToAncestors(dir, -n.Size, -n.Length, -n.FileCount, -n.DirCount);
         n.FirstChild = None;
         n.Flags &= ~(NodeFlags.Scanned | NodeFlags.Error);
+        MarkChanged();
+    }
+
+    /// <summary>Discards everything but the root, including nodes not yet linked into the tree.</summary>
+    internal void ResetToRoot()
+    {
+        for (int i = 0; i < Count; i++)
+            if (i != Root) this[i].Flags |= NodeFlags.Deleted;
+        ref var r = ref this[Root];
+        r.FirstChild = None;
+        r.Size = r.Length = 0;
+        r.FileCount = r.DirCount = 0;
+        r.Flags &= ~(NodeFlags.Scanned | NodeFlags.Error);
         MarkChanged();
     }
 

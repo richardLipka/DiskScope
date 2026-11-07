@@ -293,6 +293,7 @@ sealed partial class MainForm : Form
         _status.Text = L.T("StatusLine", state, Format.Count(root.FileCount, L.Culture), Format.Count(root.DirCount, L.Culture),
             Format.Size(root.Size, L.Culture), Format.Duration(_session.Elapsed), Format.Count(p.Errors, L.Culture));
         if (_session.State == ScanState.Running && p.CurrentPath is string cur) _status.Text += "  ·  " + cur;
+        if (_session.MftError is Exception mftError) _status.Text += "  ·  " + L.T("MftFallback", mftError.Message);
         _progress.Visible = _session.State == ScanState.Running;
         if (p.TotalRecords > 0)
         {

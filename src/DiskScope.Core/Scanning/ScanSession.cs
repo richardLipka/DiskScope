@@ -16,7 +16,7 @@ public sealed class ScanSession
 {
     readonly CancellationTokenSource _cancel = new();
     readonly Stopwatch _clock = new();
-    readonly IScanner _scanner;
+    IScanner _scanner;
     Thread? _thread;
 
     public NodeStore Store { get; } = new();
@@ -25,6 +25,9 @@ public sealed class ScanSession
     public ScanMode Mode => _scanner.Mode;
     public ScanState State { get; private set; } = ScanState.Running;
     public Exception? Error { get; private set; }
+
+    /// <summary>Why the MFT scan was abandoned for directory enumeration, if it was.</summary>
+    public Exception? MftError { get; private set; }
     public TimeSpan Elapsed => _clock.Elapsed;
     public DateTime StartedUtc { get; } = DateTime.UtcNow;
 
@@ -70,7 +73,20 @@ public sealed class ScanSession
     {
         try
         {
-            _scanner.Scan(Store, RootPath, Progress, _cancel.Token);
+            try
+            {
+                _scanner.Scan(Store, RootPath, Progress, _cancel.Token);
+            }
+            catch (Exception ex) when (_scanner is MftScanner && ex is not OperationCanceledException)
+            {
+                // Reading the MFT can fail on unusual volumes; enumerating directories always works.
+                MftError = ex;
+                Store.ResetToRoot();
+                Progress.TotalRecords = 0;
+                Progress.Files = Progress.Directories = Progress.Bytes = 0;
+                _scanner = new DirectoryScanner();
+                _scanner.Scan(Store, RootPath, Progress, _cancel.Token);
+            }
             State = ScanState.Completed;
         }
         catch (OperationCanceledException)

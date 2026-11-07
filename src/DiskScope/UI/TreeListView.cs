@@ -272,13 +272,15 @@ sealed class TreeListView : ListView
         var flags = n.Flags;
         if ((flags & NodeFlags.Error) != 0) name += "  " + L.T("AccessDenied");
         else if ((flags & NodeFlags.Reparse) != 0) name += "  " + L.T("Link");
+        else if ((flags & NodeFlags.HardLink) != 0) name += "  " + L.T("HardLink");
         else if (n.IsDirectory && (flags & NodeFlags.Scanned) == 0) name += "  " + L.T("NotScanned");
 
         Color c = fore;
         if (!(selected && Focused))
         {
             if ((flags & NodeFlags.Error) != 0) c = GrowColor;
-            else if ((flags & NodeFlags.Reparse) != 0 || (n.IsDirectory && (flags & NodeFlags.Scanned) == 0)) c = SystemColors.GrayText;
+            else if ((flags & (NodeFlags.Reparse | NodeFlags.HardLink)) != 0 || (n.IsDirectory && (flags & NodeFlags.Scanned) == 0))
+                c = SystemColors.GrayText;
         }
         var rect = new Rectangle(x, b.Y, Math.Max(0, b.Right - x - Scale(2)), b.Height);
         TextRenderer.DrawText(g, name, Font, rect, c,
