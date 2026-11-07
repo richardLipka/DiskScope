@@ -232,6 +232,7 @@
     },
     {
       "id": "chrome-ai-model",
+      "redownloadable": true,
       "category": "browser",
       "safety": "caution",
       "action": "none",
@@ -251,6 +252,7 @@
     },
     {
       "id": "npm-cache",
+      "redownloadable": true,
       "category": "dev",
       "safety": "safe",
       "action": "deleteContents",
@@ -264,6 +266,7 @@
     },
     {
       "id": "yarn-cache",
+      "redownloadable": true,
       "category": "dev",
       "safety": "safe",
       "action": "deleteContents",
@@ -274,6 +277,7 @@
     },
     {
       "id": "pnpm-store",
+      "redownloadable": true,
       "category": "dev",
       "safety": "caution",
       "action": "none",
@@ -290,6 +294,7 @@
     },
     {
       "id": "pip-cache",
+      "redownloadable": true,
       "category": "dev",
       "safety": "safe",
       "action": "deleteContents",
@@ -306,6 +311,7 @@
     },
     {
       "id": "uv-cache",
+      "redownloadable": true,
       "category": "dev",
       "safety": "safe",
       "action": "deleteContents",
@@ -316,6 +322,7 @@
     },
     {
       "id": "nuget-packages",
+      "redownloadable": true,
       "category": "dev",
       "safety": "caution",
       "action": "deleteContents",
@@ -329,6 +336,7 @@
     },
     {
       "id": "nuget-http-cache",
+      "redownloadable": true,
       "category": "dev",
       "safety": "safe",
       "action": "deleteContents",
@@ -339,6 +347,7 @@
     },
     {
       "id": "gradle-caches",
+      "redownloadable": true,
       "category": "dev",
       "safety": "caution",
       "action": "deleteContents",
@@ -355,6 +364,7 @@
     },
     {
       "id": "maven-repository",
+      "redownloadable": true,
       "category": "dev",
       "safety": "caution",
       "action": "deleteContents",
@@ -371,6 +381,7 @@
     },
     {
       "id": "huggingface-cache",
+      "redownloadable": true,
       "category": "dev",
       "safety": "caution",
       "action": "none",
@@ -387,6 +398,7 @@
     },
     {
       "id": "torch-cache",
+      "redownloadable": true,
       "category": "dev",
       "safety": "caution",
       "action": "deleteContents",
@@ -411,6 +423,7 @@
     },
     {
       "id": "node-modules",
+      "redownloadable": true,
       "category": "dev",
       "safety": "caution",
       "action": "delete",
@@ -561,6 +574,7 @@
     },
     {
       "id": "steam-shadercache",
+      "redownloadable": true,
       "category": "app",
       "safety": "safe",
       "action": "deleteContents",
@@ -571,6 +585,7 @@
     },
     {
       "id": "ckan-downloads",
+      "redownloadable": true,
       "category": "app",
       "safety": "safe",
       "action": "deleteContents",
@@ -588,6 +603,292 @@
       "name": { "cs": "Mezipaměť médií Adobe", "en": "Adobe media cache" },
       "description": { "cs": "Mezipaměť Premiere, After Effects a dalších aplikací Adobe.", "en": "Cache of Premiere, After Effects and other Adobe apps." },
       "howTo": { "cs": "V aplikaci: Předvolby > Mezipaměť médií > Odstranit.", "en": "In the app: Preferences > Media Cache > Delete." }
+    },
+    {
+      "id": "maven-wrapper",
+      "redownloadable": true,
+      "category": "dev",
+      "safety": "safe",
+      "action": "deleteContents",
+      "paths": [ "{user}\\.m2\\wrapper\\dists" ],
+      "name": { "cs": "Distribuce Maven Wrapper", "en": "Maven Wrapper distributions" },
+      "description": {
+        "cs": "Verze Mavenu stažené skriptem mvnw pro jednotlivé projekty, často i staré, které už žádný projekt nepoužívá.",
+        "en": "Maven versions downloaded by the mvnw script for projects, often old ones no project uses any more."
+      },
+      "howTo": { "cs": "Smazat obsah; mvnw stáhne potřebnou verzi při dalším spuštění.", "en": "Delete the contents; mvnw downloads the needed version on its next run." }
+    },
+    {
+      "id": "git-lfs-objects",
+      "redownloadable": true,
+      "category": "dev",
+      "safety": "caution",
+      "action": "none",
+      "folderNames": [ ".git\\lfs\\objects" ],
+      "minSize": 104857600,
+      "name": { "cs": "Objekty Git LFS v repozitářích", "en": "Git LFS objects in repositories" },
+      "description": {
+        "cs": "Velké soubory spravované Git LFS, včetně starých verzí, které už pracovní kopie nepotřebuje. Server je má uložené.",
+        "en": "Large files managed by Git LFS, including old versions the working copy no longer needs. The server keeps them."
+      },
+      "howTo": {
+        "cs": "V repozitáři spusťte git lfs prune (smaže jen staré a už nahrané verze). Ručně nemazat – přišli byste i o neodeslané soubory.",
+        "en": "Run git lfs prune in the repository (removes only old, already pushed versions). Do not delete by hand – unpushed files would be lost too."
+      }
+    },
+    {
+      "id": "git-repository-garbage",
+      "category": "dev",
+      "safety": "caution",
+      "action": "none",
+      "folderNames": [ ".git" ],
+      "minSize": 1073741824,
+      "name": { "cs": "Velké repozitáře Git", "en": "Large Git repositories" },
+      "description": {
+        "cs": "Historie repozitáře (.git) přes 1 GB. Často obsahuje nepotřebné objekty a nezkomprimované balíčky.",
+        "en": "Repository history (.git) over 1 GB. It often holds unreachable objects and loose, uncompressed data."
+      },
+      "howTo": {
+        "cs": "V repozitáři spusťte git gc --prune=now (případně git gc --aggressive). Složku .git nemažte – je to celá historie projektu.",
+        "en": "Run git gc --prune=now in the repository (or git gc --aggressive). Do not delete .git – it is the project's whole history."
+      }
+    },
+    {
+      "id": "squirrel-packages",
+      "redownloadable": true,
+      "category": "app",
+      "safety": "safe",
+      "action": "deleteContents",
+      "paths": [
+        "{user}\\AppData\\Local\\GitHubDesktop\\packages",
+        "{user}\\AppData\\Local\\Discord\\packages",
+        "{user}\\AppData\\Local\\slack\\packages",
+        "{user}\\AppData\\Local\\Postman\\packages",
+        "{user}\\AppData\\Local\\Microsoft\\Teams\\packages"
+      ],
+      "name": { "cs": "Instalátory aktualizací (GitHub Desktop, Discord, Slack…)", "en": "Update installers (GitHub Desktop, Discord, Slack…)" },
+      "description": {
+        "cs": "Balíčky aktualizací, které si aplikace stáhly a už nainstalovaly.",
+        "en": "Update packages the applications downloaded and already installed."
+      },
+      "howTo": { "cs": "Smazat obsah při zavřené aplikaci; další aktualizace se stáhne znovu.", "en": "Delete the contents with the app closed; the next update is downloaded again." }
+    },
+    {
+      "id": "cargo-cache",
+      "redownloadable": true,
+      "category": "dev",
+      "safety": "safe",
+      "action": "deleteContents",
+      "paths": [ "{user}\\.cargo\\registry\\cache", "{user}\\.cargo\\registry\\src", "{user}\\.cargo\\git\\checkouts", "{user}\\.cargo\\git\\db" ],
+      "name": { "cs": "Mezipaměť Cargo (Rust)", "en": "Cargo cache (Rust)" },
+      "description": {
+        "cs": "Stažené a rozbalené knihovny (crates) a git závislosti. Při dalším sestavení se stáhnou znovu.",
+        "en": "Downloaded and unpacked crates and git dependencies. Downloaded again on the next build."
+      },
+      "howTo": {
+        "cs": "Smazat obsah, nebo nástrojem cargo-cache: cargo cache --autoclean.",
+        "en": "Delete the contents, or with the cargo-cache tool: cargo cache --autoclean."
+      }
+    },
+    {
+      "id": "go-caches",
+      "redownloadable": true,
+      "category": "dev",
+      "safety": "safe",
+      "action": "deleteContents",
+      "paths": [ "{user}\\go\\pkg\\mod", "{user}\\AppData\\Local\\go-build" ],
+      "name": { "cs": "Mezipaměti Go (moduly a sestavení)", "en": "Go caches (modules and builds)" },
+      "description": {
+        "cs": "Stažené moduly Go a mezivýsledky překladu. Soubory modulů jsou jen pro čtení, aplikace je přesto smaže.",
+        "en": "Downloaded Go modules and build results. Module files are read-only; the app deletes them anyway."
+      },
+      "howTo": { "cs": "Příkazy: go clean -modcache a go clean -cache", "en": "Commands: go clean -modcache and go clean -cache" }
+    },
+    {
+      "id": "composer-cache",
+      "redownloadable": true,
+      "category": "dev",
+      "safety": "safe",
+      "action": "deleteContents",
+      "paths": [ "{user}\\AppData\\Local\\Composer" ],
+      "name": { "cs": "Mezipaměť Composer (PHP)", "en": "Composer cache (PHP)" },
+      "description": { "cs": "Stažené balíčky PHP.", "en": "Downloaded PHP packages." },
+      "howTo": { "cs": "Příkaz: composer clear-cache", "en": "Command: composer clear-cache" }
+    },
+    {
+      "id": "bun-cache",
+      "redownloadable": true,
+      "category": "dev",
+      "safety": "safe",
+      "action": "deleteContents",
+      "paths": [ "{user}\\.bun\\install\\cache" ],
+      "name": { "cs": "Mezipaměť Bun", "en": "Bun cache" },
+      "description": { "cs": "Stažené balíčky JavaScriptu pro Bun.", "en": "Downloaded JavaScript packages for Bun." },
+      "howTo": { "cs": "Příkaz: bun pm cache rm", "en": "Command: bun pm cache rm" }
+    },
+    {
+      "id": "deno-cache",
+      "redownloadable": true,
+      "category": "dev",
+      "safety": "safe",
+      "action": "deleteContents",
+      "paths": [ "{user}\\AppData\\Local\\deno" ],
+      "name": { "cs": "Mezipaměť Deno", "en": "Deno cache" },
+      "description": { "cs": "Stažené moduly a přeložený kód Deno.", "en": "Downloaded modules and compiled code of Deno." },
+      "howTo": { "cs": "Příkaz: deno clean", "en": "Command: deno clean" }
+    },
+    {
+      "id": "conda-pkgs",
+      "redownloadable": true,
+      "category": "dev",
+      "safety": "caution",
+      "action": "none",
+      "paths": [
+        "{user}\\anaconda3\\pkgs", "{user}\\miniconda3\\pkgs", "{user}\\miniforge3\\pkgs", "{user}\\.conda\\pkgs",
+        "%ProgramData%\\anaconda3\\pkgs", "%ProgramData%\\miniconda3\\pkgs"
+      ],
+      "name": { "cs": "Balíčky conda (Anaconda, Miniconda)", "en": "conda packages (Anaconda, Miniconda)" },
+      "description": {
+        "cs": "Stažené balíčky a jejich rozbalené kopie. Prostředí na ně odkazují pevnými odkazy, proto se nemají mazat ručně.",
+        "en": "Downloaded packages and their unpacked copies. Environments hard-link to them, so they must not be deleted by hand."
+      },
+      "howTo": {
+        "cs": "Příkaz: conda clean --all (smaže jen nepoužívané balíčky a archivy).",
+        "en": "Command: conda clean --all (removes only unused packages and archives)."
+      }
+    },
+    {
+      "id": "python-tool-caches",
+      "redownloadable": true,
+      "category": "dev",
+      "safety": "safe",
+      "action": "deleteContents",
+      "paths": [ "{user}\\AppData\\Local\\pypoetry\\Cache", "{user}\\AppData\\Local\\pipenv\\Cache", "{user}\\AppData\\Local\\hatch\\cache" ],
+      "name": { "cs": "Mezipaměti Poetry, Pipenv a Hatch (Python)", "en": "Poetry, Pipenv and Hatch caches (Python)" },
+      "description": { "cs": "Stažené balíčky Pythonu těchto správců projektů.", "en": "Python packages downloaded by these project managers." },
+      "howTo": {
+        "cs": "Smazat obsah, nebo poetry cache clear --all PyPI / pipenv --clear.",
+        "en": "Delete the contents, or poetry cache clear --all PyPI / pipenv --clear."
+      }
+    },
+    {
+      "id": "node-build-caches",
+      "redownloadable": true,
+      "category": "dev",
+      "safety": "safe",
+      "action": "deleteContents",
+      "paths": [
+        "{user}\\AppData\\Local\\node-gyp\\Cache",
+        "{user}\\AppData\\Local\\electron\\Cache",
+        "{user}\\AppData\\Local\\electron-builder\\Cache",
+        "{user}\\AppData\\Local\\bower\\cache"
+      ],
+      "name": { "cs": "Mezipaměti node-gyp, Electron a Bower", "en": "node-gyp, Electron and Bower caches" },
+      "description": {
+        "cs": "Stažené hlavičky Node.js, binárky Electronu a balíčky Bower pro sestavování projektů.",
+        "en": "Downloaded Node.js headers, Electron binaries and Bower packages used to build projects."
+      },
+      "howTo": { "cs": "Smazat obsah; při dalším sestavení se stáhnou znovu.", "en": "Delete the contents; they are downloaded again on the next build." }
+    },
+    {
+      "id": "test-browsers",
+      "redownloadable": true,
+      "category": "dev",
+      "safety": "safe",
+      "action": "deleteContents",
+      "paths": [ "{user}\\AppData\\Local\\ms-playwright", "{user}\\AppData\\Local\\Cypress\\Cache", "{user}\\.cache\\puppeteer" ],
+      "name": { "cs": "Prohlížeče pro testy (Playwright, Cypress, Puppeteer)", "en": "Test browsers (Playwright, Cypress, Puppeteer)" },
+      "description": {
+        "cs": "Stažené verze prohlížečů pro automatické testy, často několik starých verzí vedle sebe.",
+        "en": "Browser builds downloaded for automated tests, often several old versions side by side."
+      },
+      "howTo": {
+        "cs": "Smazat obsah; potřebné verze stáhne npx playwright install / npx cypress install / instalace puppeteer.",
+        "en": "Delete the contents; the needed versions come back with npx playwright install / npx cypress install / installing puppeteer."
+      }
+    },
+    {
+      "id": "jvm-tool-caches",
+      "redownloadable": true,
+      "category": "dev",
+      "safety": "safe",
+      "action": "deleteContents",
+      "paths": [ "{user}\\AppData\\Local\\Coursier\\cache", "{user}\\.ivy2\\cache", "{user}\\.sbt\\boot" ],
+      "name": { "cs": "Mezipaměti Coursier, Ivy a sbt (Scala, Java)", "en": "Coursier, Ivy and sbt caches (Scala, Java)" },
+      "description": { "cs": "Stažené knihovny a nástroje pro sestavování projektů.", "en": "Downloaded libraries and tools for building projects." },
+      "howTo": { "cs": "Smazat obsah; při dalším sestavení se stáhnou znovu.", "en": "Delete the contents; they are downloaded again on the next build." }
+    },
+    {
+      "id": "dart-pub-cache",
+      "redownloadable": true,
+      "category": "dev",
+      "safety": "safe",
+      "action": "deleteContents",
+      "paths": [ "{user}\\AppData\\Local\\Pub\\Cache" ],
+      "name": { "cs": "Mezipaměť pub (Dart, Flutter)", "en": "pub cache (Dart, Flutter)" },
+      "description": { "cs": "Stažené balíčky Dartu a Flutteru.", "en": "Downloaded Dart and Flutter packages." },
+      "howTo": { "cs": "Příkaz: dart pub cache clean (projekty pak obnovte příkazem dart pub get).", "en": "Command: dart pub cache clean (then restore projects with dart pub get)." }
+    },
+    {
+      "id": "vcpkg-archives",
+      "redownloadable": true,
+      "category": "dev",
+      "safety": "safe",
+      "action": "deleteContents",
+      "paths": [ "{user}\\AppData\\Local\\vcpkg\\archives", "{user}\\AppData\\Local\\vcpkg\\downloads" ],
+      "name": { "cs": "Mezipaměť vcpkg (C++)", "en": "vcpkg cache (C++)" },
+      "description": { "cs": "Binární mezipaměť a stažené zdroje knihoven C++.", "en": "Binary cache and downloaded sources of C++ libraries." },
+      "howTo": { "cs": "Smazat obsah; knihovny se při další instalaci znovu sestaví nebo stáhnou.", "en": "Delete the contents; libraries are rebuilt or downloaded on the next install." }
+    },
+    {
+      "id": "scoop-cache",
+      "redownloadable": true,
+      "category": "dev",
+      "safety": "safe",
+      "action": "deleteContents",
+      "paths": [ "{user}\\scoop\\cache" ],
+      "name": { "cs": "Mezipaměť Scoop", "en": "Scoop cache" },
+      "description": { "cs": "Instalátory programů stažené správcem Scoop.", "en": "Program installers downloaded by the Scoop manager." },
+      "howTo": { "cs": "Příkaz: scoop cache rm *", "en": "Command: scoop cache rm *" }
+    },
+    {
+      "id": "android-cache",
+      "redownloadable": true,
+      "category": "dev",
+      "safety": "safe",
+      "action": "deleteContents",
+      "paths": [ "{user}\\.android\\cache" ],
+      "name": { "cs": "Mezipaměť Android SDK", "en": "Android SDK cache" },
+      "description": { "cs": "Stažené soubory nástrojů Android SDK.", "en": "Files downloaded by the Android SDK tools." },
+      "howTo": { "cs": "Smazat obsah. Emulátory (složka .android\\avd) nemažte zde – spravujte je v Android Studiu.", "en": "Delete the contents. Do not delete emulators (.android\\avd) here – manage them in Android Studio." }
+    },
+    {
+      "id": "unity-cache",
+      "redownloadable": true,
+      "category": "dev",
+      "safety": "safe",
+      "action": "deleteContents",
+      "paths": [ "{user}\\AppData\\Local\\Unity\\cache" ],
+      "name": { "cs": "Mezipaměť balíčků Unity", "en": "Unity package cache" },
+      "description": { "cs": "Stažené balíčky Unity Package Manageru.", "en": "Packages downloaded by the Unity Package Manager." },
+      "howTo": { "cs": "Smazat obsah při zavřeném Unity; projekty si balíčky stáhnou znovu.", "en": "Delete the contents with Unity closed; projects download the packages again." }
+    },
+    {
+      "id": "visual-studio-packages",
+      "redownloadable": true,
+      "category": "dev",
+      "safety": "caution",
+      "action": "none",
+      "paths": [ "%ProgramData%\\Microsoft\\VisualStudio\\Packages" ],
+      "name": { "cs": "Instalační balíčky Visual Studia", "en": "Visual Studio installation packages" },
+      "description": {
+        "cs": "Balíčky, které si instalátor Visual Studia ponechal pro úpravy a opravy instalace.",
+        "en": "Packages the Visual Studio Installer kept for modifying and repairing the installation."
+      },
+      "howTo": {
+        "cs": "Nemazat ručně. V instalačním programu Visual Studia vypněte ponechávání mezipaměti stahování; při úpravě nebo opravě si balíčky stáhne znovu.",
+        "en": "Do not delete by hand. Turn off keeping the download cache in the Visual Studio Installer; it downloads packages again when modifying or repairing."
+      }
     },
     {
       "id": "downloads",

@@ -87,12 +87,20 @@ public static class CleanupFinder
     {
         var found = new List<int>();
         Span<char> buf = stackalloc char[32768];
+        // Each pattern as path segments; the last one is matched against the folder, the rest against its parents.
+        var patterns = names.Select(n => n.Split('\\', StringSplitOptions.RemoveEmptyEntries)).Where(s => s.Length > 0).ToList();
         int count = store.Count;
         for (int i = 0; i < count; i++)
         {
             ref var n = ref store[i];
             if (!n.IsDirectory || (n.Flags & (NodeFlags.Used | NodeFlags.Deleted)) != NodeFlags.Used || i == store.Root) continue;
-            if (Matches(names, store.CopyName(i, buf))) found.Add(i);
+            var name = store.CopyName(i, buf);
+            foreach (var segments in patterns)
+                if (Matches(segments[^1], name) && ParentsMatch(store, i, segments))
+                {
+                    found.Add(i);
+                    break;
+                }
         }
         var set = found.ToHashSet();
         return found.Where(f =>
@@ -103,11 +111,18 @@ public static class CleanupFinder
         }).ToList();
     }
 
-    static bool Matches(List<string> patterns, ReadOnlySpan<char> name)
+    static bool Matches(string pattern, ReadOnlySpan<char> name) =>
+        HasWildcard(pattern) ? FileSystemName.MatchesSimpleExpression(pattern, name, ignoreCase: true) : name.Equals(pattern, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>For a pattern like .git\lfs\objects: the folder's parent is "lfs" and its parent ".git".</summary>
+    static bool ParentsMatch(NodeStore store, int node, string[] segments)
     {
-        foreach (var p in patterns)
-            if (HasWildcard(p) ? FileSystemName.MatchesSimpleExpression(p, name, ignoreCase: true) : name.Equals(p, StringComparison.OrdinalIgnoreCase))
-                return true;
-        return false;
+        int p = node;
+        for (int s = segments.Length - 2; s >= 0; s--)
+        {
+            p = store[p].Parent;
+            if (p == NodeStore.None || !Matches(segments[s], store.GetName(p))) return false;
+        }
+        return true;
     }
 }

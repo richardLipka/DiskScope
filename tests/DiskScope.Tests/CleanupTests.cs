@@ -76,6 +76,38 @@ public class CleanupTests
     }
 
     [Fact]
+    public void DeveloperCachesAreMarkedRedownloadable()
+    {
+        var catalog = CleanupCatalog.Default();
+        foreach (string id in new[] { "npm-cache", "yarn-cache", "pip-cache", "maven-repository", "maven-wrapper", "gradle-caches",
+                     "nuget-packages", "cargo-cache", "go-caches", "composer-cache", "git-lfs-objects", "squirrel-packages" })
+            Assert.True(catalog.Entries.Single(e => e.Id == id).Redownloadable, id);
+        Assert.False(catalog.Entries.Single(e => e.Id == "user-temp").Redownloadable);
+        // Caches with hard-linked or unpushed content are only advised, never emptied by the app.
+        Assert.Equal(CleanupAction.None, catalog.Entries.Single(e => e.Id == "conda-pkgs").Action);
+        Assert.Equal(CleanupAction.None, catalog.Entries.Single(e => e.Id == "git-lfs-objects").Action);
+    }
+
+    [Fact]
+    public void MatchesPathEndingsAnywhere()
+    {
+        var s = new NodeStore();
+        int root = s.CreateRoot(@"D:\src");
+        int Dir(int parent, string name) => Link(s, parent, s.Add(parent, name, NodeFlags.Directory, 0, 0, 0, 0));
+        void File(int parent, string name, long size) => Link(s, parent, s.Add(parent, name, NodeFlags.None, 0, size, size, 0));
+
+        int repo = Dir(root, "game");
+        int objects = Dir(Dir(Dir(repo, ".git"), "lfs"), "objects");
+        File(objects, "blob", 200L << 20);
+        int other = Dir(Dir(root, "notes"), "objects"); // "objects" outside .git\lfs must not match
+        File(other, "x", 200L << 20);
+        s.ComputeTotalsFromRoot();
+
+        var matches = CleanupFinder.Find(s, CleanupCatalog.Default(), Expand);
+        Assert.Equal([objects], matches.Where(m => m.Entry.Id == "git-lfs-objects").Select(m => m.Node));
+    }
+
+    [Fact]
     public void WorksWhenOnlyAFolderInsideWasScanned()
     {
         var s = new NodeStore();

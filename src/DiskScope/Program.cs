@@ -13,7 +13,7 @@ static class Program
     ///   --scan folder --compare-test file.png               compares with the previous saved scan, captures
     ///   --search-test file.png                              opens the search panel (largest files), captures
     ///   --ai-prompt path --out file.txt                     writes the AI question for a path
-    ///   --cleanup-test file.png                             opens the cleanup panel, captures
+    ///   --cleanup-test file.png [--cleanup-mark]            opens the cleanup panel (selects re-downloadable caches), captures
     ///   --orphan-test file.png                              opens the abandoned-data panel, captures
     ///   --scan folder --duplicate-test file.png [--duplicate-folder path]   searches duplicates (in a folder), captures
     ///   --map-test file.png                                 opens the treemap, captures
@@ -51,7 +51,7 @@ static class Program
         if (Arg("--queue-test") is string queueShot)
             TestHooks.CaptureQueue(form, queueShot);
         if (Arg("--cleanup-test") is string cleanupShot)
-            TestHooks.CaptureCleanup(form, cleanupShot);
+            TestHooks.CaptureCleanup(form, cleanupShot, args.Contains("--cleanup-mark"));
         if (Arg("--ai-prompt") is string aiPath && Arg("--out") is string aiOut)
             TestHooks.WriteAiPrompt(form, aiPath, aiOut);
         if (Arg("--data-manager") is string dmShot)

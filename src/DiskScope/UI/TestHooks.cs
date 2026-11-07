@@ -110,15 +110,19 @@ static class TestHooks
     }
 
     /// <summary>When the tree is ready, opens the cleanup panel, captures it with the first item selected, quits.</summary>
-    public static void CaptureCleanup(MainForm form, string file)
+    public static void CaptureCleanup(MainForm form, string file, bool markCaches)
     {
         Action open = () => form.ShowCleanupForTest();
         form.ScanCompleted += open;
         form.SnapshotLoaded += open;
         form.CleanupPanelForTest.CleanupFound += () => After(800, () =>
         {
-            Capture(form, file);
-            form.Close();
+            if (markCaches) form.CleanupPanelForTest.MarkRedownloadableForTest();
+            After(300, () =>
+            {
+                Capture(form, file);
+                form.Close();
+            });
         });
     }
 

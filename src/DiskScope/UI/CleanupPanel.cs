@@ -12,6 +12,8 @@ sealed class CleanupPanel : UserControl
     readonly Button _refresh = new() { AutoSize = true };
     readonly Button _edit = new() { AutoSize = true };
     readonly Button _reload = new() { AutoSize = true };
+    readonly CheckBox _onlyRedownloadable = new() { AutoSize = true, Margin = new Padding(12, 7, 3, 2) };
+    readonly Button _markRedownloadable = new() { AutoSize = true };
     readonly ListView _list = new()
     {
         Dock = DockStyle.Fill, View = View.Details, FullRowSelect = true, HideSelection = false, MultiSelect = true,
@@ -45,11 +47,13 @@ sealed class CleanupPanel : UserControl
     public CleanupPanel()
     {
         _catalog = CleanupCatalog.Default();
-        _bar.Controls.AddRange([_summary, _refresh, _edit, _reload]);
+        _bar.Controls.AddRange([_summary, _refresh, _edit, _reload, _onlyRedownloadable, _markRedownloadable]);
+        _onlyRedownloadable.CheckedChanged += (_, _) => Fill();
+        _markRedownloadable.Click += (_, _) => MarkRedownloadable();
         Controls.Add(_list);
         Controls.Add(_advice);
         Controls.Add(_bar);
-        foreach (var w in new[] { 330, 95, 120, 620 }) _list.Columns.Add("", w);
+        foreach (var w in new[] { 330, 95, 200, 620 }) _list.Columns.Add("", w);
         _list.Columns[1].TextAlign = HorizontalAlignment.Right;
         _list.SelectedIndexChanged += (_, _) => ShowAdvice();
         _list.DoubleClick += (_, _) =>
@@ -78,6 +82,8 @@ sealed class CleanupPanel : UserControl
         _refresh.Text = L.T("CleanupRefresh");
         _edit.Text = L.T("CleanupEdit");
         _reload.Text = L.T("CleanupReload");
+        _onlyRedownloadable.Text = L.T("CleanupOnlyRedownloadable");
+        _markRedownloadable.Text = L.T("CleanupMarkRedownloadable");
         string[] cols = ["CleanupColItem", "ColOnDisk", "CleanupColAction", "ColLocation"];
         for (int i = 0; i < cols.Length; i++) _list.Columns[i].Text = L.T(cols[i]);
         if (_store != null) FindLocations();
@@ -112,13 +118,29 @@ sealed class CleanupPanel : UserControl
         var matches = await Task.Run(() => CleanupFinder.Find(store, catalog));
         if (store != _store) return;
         _matches = matches;
+        Fill();
+        _advice.Text = _catalogError != null ? L.T("CatalogError", _catalogError) : L.T("CleanupHint");
+        CleanupFound?.Invoke();
+    }
 
+    /// <summary>
+    /// A cache folder whose tool downloads it again and which the app may empty. Items deleted whole (node_modules
+    /// in projects) are left out: a project would need reinstalling before it builds again.
+    /// </summary>
+    static bool IsRedownloadableCache(CleanupMatch m) =>
+        m.Entry.Redownloadable && m.Entry.Action == CleanupAction.DeleteContents && m.Entry.Safety != CleanupSafety.System;
+
+    void Fill()
+    {
+        if (_store == null) return;
+        var store = _store;
+        var shown = _onlyRedownloadable.Checked ? _matches.Where(m => m.Entry.Redownloadable).ToList() : _matches;
         _list.BeginUpdate();
         _list.Items.Clear();
         _list.Groups.Clear();
         foreach (CleanupSafety safety in Enum.GetValues<CleanupSafety>())
         {
-            var inGroup = _matches.Where(m => m.Entry.Safety == safety).OrderByDescending(m => m.Size).ToList();
+            var inGroup = shown.Where(m => m.Entry.Safety == safety).OrderByDescending(m => m.Size).ToList();
             if (inGroup.Count == 0) continue;
             var group = new ListViewGroup(L.T("Safety" + safety, Format.Size(CleanupFinder.TotalSize(store, inGroup), L.Culture)));
             _list.Groups.Add(group);
@@ -127,7 +149,7 @@ sealed class CleanupPanel : UserControl
                 var item = new ListViewItem([
                     CatalogEntry.Text(m.Entry.Name, L.Lang),
                     Format.Size(m.Size, L.Culture),
-                    L.T("Action" + m.Entry.Action),
+                    L.T("Action" + m.Entry.Action) + (m.Entry.Redownloadable ? " · " + L.T("RedownloadableShort") : ""),
                     store.GetPath(m.Node),
                 ], group) { Tag = m };
                 if (safety == CleanupSafety.System) item.ForeColor = SystemColors.GrayText;
@@ -137,9 +159,27 @@ sealed class CleanupPanel : UserControl
         _list.EndUpdate();
 
         long safe = CleanupFinder.TotalSize(store, _matches.Where(m => m.Entry.Safety == CleanupSafety.Safe));
-        _summary.Text = L.T("CleanupSummary", _matches.Count, Format.Size(safe, L.Culture), _catalog.Entries.Count);
-        _advice.Text = _catalogError != null ? L.T("CatalogError", _catalogError) : L.T("CleanupHint");
-        CleanupFound?.Invoke();
+        long caches = CleanupFinder.TotalSize(store, _matches.Where(IsRedownloadableCache));
+        _summary.Text = L.T("CleanupSummary", _matches.Count, Format.Size(safe, L.Culture), _catalog.Entries.Count) + " · " +
+                        L.T("CleanupRedownloadableTotal", Format.Size(caches, L.Culture));
+        _markRedownloadable.Enabled = _matches.Any(IsRedownloadableCache);
+    }
+
+    /// <summary>Selects every cache that can be emptied and downloaded again, ready for "Empty to Recycle Bin".</summary>
+    void MarkRedownloadable()
+    {
+        _list.SelectedItems.Clear();
+        foreach (ListViewItem item in _list.Items)
+            if (item.Tag is CleanupMatch m && IsRedownloadableCache(m)) item.Selected = true;
+        _list.Focus();
+        _advice.Text = L.T("CleanupMarkedHint", _list.SelectedItems.Count,
+            Format.Size(CleanupFinder.TotalSize(_store!, SelectedMatches()), L.Culture));
+    }
+
+    internal void MarkRedownloadableForTest()
+    {
+        _onlyRedownloadable.Checked = true;
+        MarkRedownloadable();
     }
 
     /// <summary>Raised when the list has been filled; used by the test hooks.</summary>
@@ -155,7 +195,9 @@ sealed class CleanupPanel : UserControl
     {
         if (FocusedMatch is not CleanupMatch m) return;
         var e = m.Entry;
-        _advice.Text = CatalogEntry.Text(e.Name, L.Lang) + "  —  " + L.T("Safety" + e.Safety + "Short") + Environment.NewLine +
+        if (_list.SelectedItems.Count > 1) return; // keep the "marked" summary while several are selected
+        _advice.Text = CatalogEntry.Text(e.Name, L.Lang) + "  —  " + L.T("Safety" + e.Safety + "Short") +
+                       (e.Redownloadable ? ", " + L.T("RedownloadableShort") : "") + Environment.NewLine +
                        CatalogEntry.Text(e.Description, L.Lang) + Environment.NewLine +
                        L.T("HowToFree") + " " + CatalogEntry.Text(e.HowTo, L.Lang);
     }

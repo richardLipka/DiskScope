@@ -38,8 +38,14 @@ public sealed class CatalogEntry
     /// </summary>
     public List<string> Paths { get; set; } = [];
 
-    /// <summary>Folder name patterns matched anywhere in the tree (e.g. node_modules); nested matches are skipped.</summary>
+    /// <summary>
+    /// Folder name patterns matched anywhere in the tree (e.g. node_modules); nested matches are skipped.
+    /// A pattern with backslashes is matched as the end of a path (e.g. .git\lfs\objects in any repository).
+    /// </summary>
     public List<string> FolderNames { get; set; } = [];
+
+    /// <summary>A cache of downloaded files: its tool downloads what it needs again, so emptying it loses no work.</summary>
+    public bool Redownloadable { get; set; }
 
     /// <summary>Matches smaller than this many bytes are not reported.</summary>
     public long MinSize { get; set; }
