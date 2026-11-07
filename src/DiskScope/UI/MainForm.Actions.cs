@@ -255,6 +255,7 @@ sealed partial class MainForm
                 UpdateButtons();
                 UpdateDetail();
                 RefreshSearchAfterChange();
+                if (!IsScanning) ApplyDeferredJobs(); // deletions that finished while the rescan ran
             }
         }
     }

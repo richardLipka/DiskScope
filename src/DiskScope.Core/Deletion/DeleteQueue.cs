@@ -20,8 +20,12 @@ public sealed class DeleteJob(string path, bool isDirectory, long size, DeleteMe
     public string? Error { get; internal set; }
     public int FailedEntries { get; internal set; }
 
-    /// <summary>The tree and node the item came from, so the view can be updated when it is done.</summary>
-    public NodeStore? Store { get; init; }
+    /// <summary>
+    /// The tree and node the item came from, so the view can be updated when it is done. The view clears it once it
+    /// has applied the result: finished jobs stay listed, and a whole disk's tree must not stay in memory with them
+    /// after another scan replaced it.
+    /// </summary>
+    public NodeStore? Store { get; set; }
     public int Node { get; init; } = NodeStore.None;
 
     /// <summary>For a file: its size and last write time (FILETIME) when scanned. A file that differs now is not deleted.</summary>

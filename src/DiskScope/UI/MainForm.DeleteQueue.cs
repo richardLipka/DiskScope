@@ -92,19 +92,27 @@ sealed partial class MainForm
         foreach (var job in jobs)
         {
             var store = job.Store;
-            if (store == null || job.Node == NodeStore.None || !store.IsLive(job.Node)) continue;
+            if (store == null || job.Node == NodeStore.None || !store.IsLive(job.Node))
+            {
+                job.Store = null;
+                continue;
+            }
             if (store != _rows?.Store)
             {
                 store.ClearFlag(job.Node, NodeFlags.Queued);
+                job.Store = null;
                 continue;
             }
-            if (IsScanning && job.State != DeleteState.Cancelled)
+            if ((IsScanning || _rescanning) && job.State != DeleteState.Cancelled)
             {
-                // The scanner may still be adding to this part of the tree; apply once it is done.
+                // The scanner (or a folder rescan, which rebuilds part of the tree in the background) may still be
+                // changing this part of the tree; removing nodes at the same time would break its totals. Apply once
+                // it is done.
                 if (!_deferredJobs.Contains(job)) _deferredJobs.Add(job);
                 continue;
             }
             store.ClearFlag(job.Node, NodeFlags.Queued);
+            job.Store = null; // applied; the node number below is all that is still needed
             if (job.State == DeleteState.Done)
             {
                 removed.Add(job.Node);

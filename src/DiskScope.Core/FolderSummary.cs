@@ -19,7 +19,7 @@ public sealed record FolderSummary(
         var children = new List<int>();
         if (store[node].IsDirectory)
             for (int c = store[node].FirstChild; c != NodeStore.None; c = store[c].NextSibling) children.Add(c);
-        children.Sort((a, b) => store[b].Size.CompareTo(store[a].Size));
+        store.SortBySizeDescending(children);
         if (children.Count > top) children.RemoveRange(top, children.Count - top);
 
         var extensions = new Dictionary<string, (long Size, int Count)>(StringComparer.OrdinalIgnoreCase);

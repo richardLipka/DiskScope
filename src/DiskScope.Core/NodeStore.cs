@@ -531,14 +531,38 @@ public sealed class NodeStore
             }
     }
 
+    /// <summary>
+    /// Sorts nodes largest first and returns the sizes they were sorted by. Sizes change while a scan or a deletion
+    /// runs; each one is read once, because a comparison of live values can contradict itself and make the sort throw.
+    /// </summary>
+    public long[] SortBySizeDescending(List<int> nodes)
+    {
+        var items = nodes.ToArray();
+        var keys = new long[items.Length];
+        for (int i = 0; i < items.Length; i++) keys[i] = -this[items[i]].Size;
+        Array.Sort(keys, items);
+        nodes.Clear();
+        nodes.AddRange(items);
+        for (int i = 0; i < keys.Length; i++) keys[i] = -keys[i];
+        return keys;
+    }
+
     /// <summary>True when the node is in the tree (neither it nor an ancestor has been removed).</summary>
     public bool IsLive(int index) => (this[index].Flags & (NodeFlags.Used | NodeFlags.Deleted)) == NodeFlags.Used;
 
+    /// <summary>
+    /// Reserves the next node index. Its chunk is created before the count is raised past it, so a reader that walks
+    /// the table up to <see cref="Count"/> during a scan never meets a missing chunk.
+    /// </summary>
     int Allocate()
     {
-        int i = Interlocked.Increment(ref _count) - 1;
-        if (_nodes[i >> NodeShift] == null) Grow(ref _nodes[i >> NodeShift], NodeChunk);
-        return i;
+        while (true)
+        {
+            int i = Volatile.Read(ref _count);
+            if (i >> NodeShift >= _nodes.Length) throw new OutOfMemoryException("Node storage exhausted.");
+            if (Volatile.Read(ref _nodes[i >> NodeShift]) == null) Grow(ref _nodes[i >> NodeShift], NodeChunk);
+            if (Interlocked.CompareExchange(ref _count, i + 1, i) == i) return i;
+        }
     }
 
     void Grow<T>(ref T[]? slot, int size)

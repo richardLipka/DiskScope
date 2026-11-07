@@ -127,11 +127,7 @@ sealed class TreeListView : ListView
         {
             SelectedIndices.Clear();
             VirtualListSize = _rows.Count;
-            foreach (int node in selected)
-            {
-                int i = _rows.IndexOf(node);
-                if (i >= 0) SelectedIndices.Add(i);
-            }
+            foreach (int i in _rows.RowsOf(selected)) SelectedIndices.Add(i);
             int f = focused == NodeStore.None ? -1 : _rows.IndexOf(focused);
             if (f >= 0) FocusedItem = Items[f];
         }

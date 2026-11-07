@@ -32,11 +32,13 @@ public static class TreemapLayout
         for (int c = store[dir].FirstChild; c != NodeStore.None; c = store[c].NextSibling)
             if (store[c].Size > 0 && store.IsLive(c)) children.Add(c);
         if (children.Count == 0) return;
-        children.Sort((a, b) => store[b].Size.CompareTo(store[a].Size));
-
-        double total = store[dir].Size;
+        // Sizes change during a scan or a deletion: sort and lay out by one reading of them, and never let the
+        // children add up to more than the area (the folder's own total may lag behind or run ahead of them).
+        var sizes = store.SortBySizeDescending(children);
+        double total = Math.Max(store[dir].Size, sizes.Sum());
+        if (total <= 0) return;
         double scale = area.Width * (double)area.Height / total;
-        var rects = Squarify(children.Select(c => store[c].Size * scale).ToList(), area);
+        var rects = Squarify(sizes.Select(s => s * scale).ToList(), area);
         for (int i = 0; i < rects.Count; i++)
         {
             var r = rects[i];

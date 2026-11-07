@@ -51,7 +51,7 @@ static class AiPrompt
             var siblings = new List<int>();
             for (int c = store[n.Parent].FirstChild; c != NodeStore.None; c = store[c].NextSibling)
                 if (c != node) siblings.Add(c);
-            siblings.Sort((a, b) => store[b].Size.CompareTo(store[a].Size));
+            store.SortBySizeDescending(siblings);
             if (siblings.Count > 0)
             {
                 sb.AppendLine().AppendLine(L.T("AiSiblings"));

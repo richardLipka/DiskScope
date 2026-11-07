@@ -70,6 +70,26 @@ public sealed class TreeRows(NodeStore store)
 
     public int IndexOf(int node) => _nodes.IndexOf(node);
 
+    /// <summary>
+    /// Rows of many nodes at once, in one pass over the rows (−1 for nodes not shown). Restoring a selection of
+    /// thousands of items with <see cref="IndexOf"/> would scan millions of rows once per item.
+    /// </summary>
+    public List<int> RowsOf(IReadOnlyCollection<int> nodes)
+    {
+        var rows = new List<int>(nodes.Count);
+        if (nodes.Count == 0) return rows;
+        if (nodes.Count == 1)
+        {
+            int row = IndexOf(nodes.First());
+            if (row >= 0) rows.Add(row);
+            return rows;
+        }
+        var wanted = nodes as IReadOnlySet<int> ?? new HashSet<int>(nodes);
+        for (int i = 0; i < _nodes.Count && rows.Count < wanted.Count; i++)
+            if (wanted.Contains(_nodes[i])) rows.Add(i);
+        return rows;
+    }
+
     /// <summary>Recomputes the visible rows; returns false when they came out the same as before.</summary>
     public bool Rebuild()
     {
@@ -108,19 +128,31 @@ public sealed class TreeRows(NodeStore store)
         for (int c = Volatile.Read(ref store[node].FirstChild); c != NodeStore.None; c = store[c].NextSibling)
             if (Filter == null || Filter(c)) _scratch.Add(c);
         var children = _scratch.ToArray();
-        Comparison<int> cmp = Sort switch
+        if (Sort == SortColumn.Name)
         {
-            SortColumn.Name => CompareNames(children),
-            SortColumn.Length => (a, b) => store[a].Length.CompareTo(store[b].Length),
-            SortColumn.Files => (a, b) => FileCount(a).CompareTo(FileCount(b)),
-            SortColumn.Modified => (a, b) => store[a].MTime.CompareTo(store[b].MTime),
-            SortColumn.Accessed => (a, b) => store[a].ATime.CompareTo(store[b].ATime),
-            SortColumn.Delta when DeltaOf != null => (a, b) => DeltaOf(a).CompareTo(DeltaOf(b)),
-            _ => (a, b) => store[a].Size.CompareTo(store[b].Size),
-        };
-        Array.Sort(children, Descending ? (a, b) => cmp(b, a) : cmp);
+            // Names never change, so comparing them live is safe.
+            var cmp = CompareNames(children);
+            Array.Sort(children, Descending ? (a, b) => cmp(b, a) : cmp);
+            return children;
+        }
+        // Sizes, counts and times change while a scan or a deletion runs; comparing live values could give the sort
+        // inconsistent answers (which makes Array.Sort throw), so each key is read once before sorting.
+        var keys = new long[children.Length];
+        for (int i = 0; i < children.Length; i++) keys[i] = SortKey(children[i]);
+        Array.Sort(keys, children);
+        if (Descending) Array.Reverse(children);
         return children;
     }
+
+    long SortKey(int n) => Sort switch
+    {
+        SortColumn.Length => store[n].Length,
+        SortColumn.Files => FileCount(n),
+        SortColumn.Modified => store[n].MTime,
+        SortColumn.Accessed => store[n].ATime,
+        SortColumn.Delta when DeltaOf != null => DeltaOf(n),
+        _ => store[n].Size,
+    };
 
     int FileCount(int n) => store[n].IsDirectory ? store[n].FileCount : 1;
 
