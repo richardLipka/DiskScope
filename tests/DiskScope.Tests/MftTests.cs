@@ -51,6 +51,7 @@ public class MftTests(ITestOutputHelper output)
     {
         var v = new byte[72];
         W64(v, 8, mtime);
+        W64(v, 24, mtime * 10); // access time: a distinct value derived from the write time
         W32(v, 32, attrs);
         return Attr(0x10, v);
     }
@@ -186,6 +187,10 @@ public class MftTests(ITestOutputHelper output)
         int users = store.FindPath(@"T:\Users");
         Assert.True(store[users].IsDirectory);
         Assert.Equal(8192, store[store.FindPath(@"T:\Users\a.bin")].Size);
+        Assert.Equal(20, store[store.FindPath(@"T:\Users\a.bin")].ATime);
+        Assert.Equal(70, store[users].ATime);   // newest file access inside: big.vhd (7 * 10)
+        Assert.Equal(140, root.ATime);          // holes.bin (14 * 10); folders' own access times are left out
+        Assert.Equal(7, store[users].MTime);    // newest write inside, above the folder's own (1)
         Assert.Equal(5000, store[store.FindPath(@"T:\Users\a.bin")].Length);
 
         int small = store.FindPath(@"T:\small.txt");

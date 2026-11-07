@@ -14,6 +14,7 @@ enum Col
     Files,
     Folders,
     Modified,
+    Accessed,
     Delta,
 }
 
@@ -190,11 +191,15 @@ sealed class TreeListView : ListView
             Col.Size => Format.Size(n.Length, L.Culture),
             Col.Files => n.IsDirectory ? Format.Count(n.FileCount, L.Culture) : "",
             Col.Folders => n.IsDirectory ? Format.Count(n.DirCount, L.Culture) : "",
-            Col.Modified => n.MTime > 0 ? DateTime.FromFileTimeUtc(n.MTime).ToLocalTime().ToString("g", L.Culture) : "",
+            Col.Modified => Date(n.MTime),
+            Col.Accessed => Date(n.ATime),
             Col.Delta => DeltaOf?.Invoke(node) is long d ? (d == 0 ? "0" : Format.SignedSize(d, L.Culture)) : "",
             _ => "",
         };
     }
+
+    public static string Date(long filetime) =>
+        filetime > 0 ? DateTime.FromFileTimeUtc(filetime).ToLocalTime().ToString("g", L.Culture) : "";
 
     double? Percent(int node)
     {
@@ -233,7 +238,7 @@ sealed class TreeListView : ListView
             if (col == Col.Delta && DeltaOf?.Invoke(node) is long d && !(selected && Focused))
                 fore = d > 0 ? GrowColor : d < 0 ? ShrinkColor : SystemColors.GrayText;
             var flags = TextFormatFlags.Right | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix;
-            if (col == Col.Modified) flags = (flags & ~TextFormatFlags.Right) | TextFormatFlags.Left;
+            if (col is Col.Modified or Col.Accessed) flags = (flags & ~TextFormatFlags.Right) | TextFormatFlags.Left;
             TextRenderer.DrawText(g, text, Font, Rectangle.Inflate(b, -Scale(4), 0), fore, flags);
         }
     }
@@ -389,6 +394,7 @@ sealed class TreeListView : ListView
             Col.Size => SortColumn.Length,
             Col.Files => SortColumn.Files,
             Col.Modified => SortColumn.Modified,
+            Col.Accessed => SortColumn.Accessed,
             Col.Delta => SortColumn.Delta,
             _ => null,
         };
@@ -443,6 +449,7 @@ sealed class TreeListView : ListView
             SortColumn.Length => Col.Size,
             SortColumn.Files => Col.Files,
             SortColumn.Modified => Col.Modified,
+            SortColumn.Accessed => Col.Accessed,
             SortColumn.Delta => Col.Delta,
             _ => Col.OnDisk,
         };

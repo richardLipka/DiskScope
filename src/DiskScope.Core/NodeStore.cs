@@ -22,8 +22,9 @@ public enum NodeFlags : ushort
 
 /// <summary>
 /// One file or directory. Kept as a plain struct in chunked arrays: no per-node objects,
-/// so tens of millions of entries cost ~56 bytes each plus the name.
-/// Sizes, file and directory counts of a directory are aggregated over its whole subtree.
+/// so tens of millions of entries cost 64 bytes each plus the name.
+/// Sizes, file and directory counts of a directory are aggregated over its whole subtree,
+/// and its times are the newest found in it.
 /// </summary>
 [StructLayout(LayoutKind.Sequential, Pack = 4)]
 public struct Node
@@ -32,8 +33,15 @@ public struct Node
     public long Size;
     /// <summary>Logical size (end of file).</summary>
     public long Length;
-    /// <summary>Last write time as FILETIME (UTC).</summary>
+    /// <summary>
+    /// Last write time as FILETIME (UTC). For a directory: the newest of its own time and of everything inside.
+    /// </summary>
     public long MTime;
+    /// <summary>
+    /// Last access time as FILETIME (UTC), 0 when unknown. For a directory: the newest access to a file inside
+    /// (its own access time is left out, as merely listing a directory updates it).
+    /// </summary>
+    public long ATime;
     public int Parent;
     public int FirstChild;
     public int NextSibling;
@@ -108,7 +116,7 @@ public sealed class NodeStore
     }
 
     /// <summary>Allocates a node and stores its name; links are left for the caller to set.</summary>
-    public int Add(int parent, ReadOnlySpan<char> name, NodeFlags flags, uint attributes, long size, long length, long mtime)
+    public int Add(int parent, ReadOnlySpan<char> name, NodeFlags flags, uint attributes, long size, long length, long mtime, long atime = 0)
     {
         int i = Allocate();
         ref var n = ref this[i];
@@ -118,6 +126,7 @@ public sealed class NodeStore
         n.Size = size;
         n.Length = length;
         n.MTime = mtime;
+        n.ATime = atime;
         n.Attributes = attributes;
         n.NameOffset = AddName(name, out n.NameLen);
         Volatile.Write(ref Unsafe(ref n.Flags), (ushort)(flags | NodeFlags.Used));
@@ -146,6 +155,27 @@ public sealed class NodeStore
             if (files != 0) Interlocked.Add(ref n.FileCount, files);
             if (dirs != 0) Interlocked.Add(ref n.DirCount, dirs);
         }
+    }
+
+    /// <summary>Raises the newest-change and newest-access times of a directory and its ancestors.</summary>
+    public void MaxTimesToAncestors(int dir, long mtime, long atime)
+    {
+        for (int i = dir; i != None; i = this[i].Parent)
+        {
+            ref var n = ref this[i];
+            bool raisedM = InterlockedMax(ref n.MTime, mtime);
+            bool raisedA = InterlockedMax(ref n.ATime, atime);
+            // Ancestors are never older than their descendants, so nothing above needs raising either.
+            if (!raisedM && !raisedA) break;
+        }
+    }
+
+    static bool InterlockedMax(ref long target, long value)
+    {
+        long current;
+        while (value > (current = Volatile.Read(ref target)))
+            if (Interlocked.CompareExchange(ref target, value, current) == current) return true;
+        return false;
     }
 
     public void SetFlag(int index, NodeFlags flag)
@@ -213,7 +243,8 @@ public sealed class NodeStore
     }
 
     /// <summary>Adds a node from a saved name; used when loading a snapshot (single-threaded).</summary>
-    internal int AddRaw(int parent, ReadOnlySpan<byte> rawName, ushort encodedLen, NodeFlags flags, uint attributes, long size, long length, long mtime)
+    internal int AddRaw(int parent, ReadOnlySpan<byte> rawName, ushort encodedLen, NodeFlags flags, uint attributes, long size, long length,
+        long mtime, long atime)
     {
         int i = Allocate();
         ref var n = ref this[i];
@@ -223,6 +254,7 @@ public sealed class NodeStore
         n.Size = size;
         n.Length = length;
         n.MTime = mtime;
+        n.ATime = atime;
         n.Attributes = attributes;
         n.NameOffset = ReserveName(rawName.Length, out var dest);
         rawName.CopyTo(dest);
@@ -245,6 +277,8 @@ public sealed class NodeStore
             ref var p = ref this[n.Parent];
             p.Size += n.Size;
             p.Length += n.Length;
+            p.MTime = Math.Max(p.MTime, n.MTime);
+            p.ATime = Math.Max(p.ATime, n.ATime);
             if (n.IsDirectory)
             {
                 p.FileCount += n.FileCount;
@@ -280,6 +314,8 @@ public sealed class NodeStore
                 ref var ch = ref this[c];
                 size += ch.Size;
                 length += ch.Length;
+                n.MTime = Math.Max(n.MTime, ch.MTime);
+                n.ATime = Math.Max(n.ATime, ch.ATime);
                 if (ch.IsDirectory)
                 {
                     files += ch.FileCount;

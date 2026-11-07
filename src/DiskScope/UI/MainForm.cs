@@ -128,12 +128,13 @@ sealed partial class MainForm : Form
     void BuildColumns()
     {
         // Widths are kept in 96-DPI units so they survive moving between monitors.
-        int[] widths = [420, 95, 150, 95, 95, 85, 150];
-        if (_settings.ColumnWidths is { Length: 7 } saved) widths = saved;
+        int[] widths = [400, 95, 140, 95, 90, 80, 135, 135];
+        if (_settings.ColumnWidths is { Length: 8 } saved) widths = saved;
         foreach (int w in widths) _tree.Columns.Add("", LogicalToDeviceUnits(w), HorizontalAlignment.Right);
         _tree.Columns[0].TextAlign = HorizontalAlignment.Left;
         _tree.Columns[(int)Col.Percent].TextAlign = HorizontalAlignment.Center;
         _tree.Columns[(int)Col.Modified].TextAlign = HorizontalAlignment.Left;
+        _tree.Columns[(int)Col.Accessed].TextAlign = HorizontalAlignment.Left;
     }
 
     void ApplyTexts()
@@ -149,7 +150,7 @@ sealed partial class MainForm : Form
         _admin.ToolTipText = L.T("RunAsAdminTip");
         _language.Text = L.T("Language") + ": " + L.Lang.ToUpperInvariant();
         foreach (ToolStripMenuItem item in _language.DropDownItems) item.Checked = (string)item.Tag! == L.Lang;
-        string[] cols = ["ColName", "ColOnDisk", "ColPercent", "ColSize", "ColFiles", "ColFolders", "ColModified", "ColDelta"];
+        string[] cols = ["ColName", "ColOnDisk", "ColPercent", "ColSize", "ColFiles", "ColFolders", "ColModified", "ColAccessed", "ColDelta"];
         for (int i = 0; i < _tree.Columns.Count; i++) _tree.Columns[i].Text = L.T(cols[i]);
         _tree.UpdateSortIcon();
         ApplyMenuTexts();
@@ -331,11 +332,13 @@ sealed partial class MainForm : Form
         ref var n = ref s[node];
         _detail.Text = n.IsDirectory
             ? L.T("DetailDir", s.GetPath(node), Format.Size(n.Size, L.Culture), Format.Size(n.Length, L.Culture),
-                Format.Count(n.FileCount, L.Culture), Format.Count(n.DirCount, L.Culture))
+                Format.Count(n.FileCount, L.Culture), Format.Count(n.DirCount, L.Culture), Dash(n.MTime), Dash(n.ATime))
             : L.T("DetailFile", s.GetPath(node), Format.Size(n.Size, L.Culture), Format.Size(n.Length, L.Culture),
-                n.MTime > 0 ? DateTime.FromFileTimeUtc(n.MTime).ToLocalTime().ToString("g", L.Culture) : "");
+                Dash(n.MTime), Dash(n.ATime));
         _detail.Text += CompareDetail(node);
     }
+
+    static string Dash(long filetime) => filetime > 0 ? TreeListView.Date(filetime) : "–";
 
     // --- navigation ---
 
@@ -413,7 +416,7 @@ sealed partial class MainForm : Form
         try { _saveTask?.Wait(); } catch { }
         _settings.Maximized = WindowState == FormWindowState.Maximized;
         _settings.WindowBounds = WindowState == FormWindowState.Normal ? Bounds : RestoreBounds;
-        _settings.ColumnWidths = _tree.Columns.Cast<ColumnHeader>().Take(7).Select(c => c.Width * 96 / DeviceDpi).ToArray();
+        _settings.ColumnWidths = _tree.Columns.Cast<ColumnHeader>().Take(8).Select(c => c.Width * 96 / DeviceDpi).ToArray();
         _settings.Language = L.Lang;
         _settings.Save();
         base.OnFormClosing(e);

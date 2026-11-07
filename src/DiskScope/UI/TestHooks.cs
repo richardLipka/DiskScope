@@ -49,6 +49,20 @@ static class TestHooks
         });
     }
 
+    /// <summary>When the tree is ready, writes the AI question for one path to a file and quits.</summary>
+    public static void WriteAiPrompt(MainForm form, string path, string file)
+    {
+        Action write = () =>
+        {
+            var store = form.Store!;
+            int node = store.FindPath(path);
+            File.WriteAllText(file, node == NodeStore.None ? "NOT FOUND " + path : AiPrompt.Build(store, node));
+            form.Close();
+        };
+        form.ScanCompleted += write;
+        form.SnapshotLoaded += write;
+    }
+
     /// <summary>Opens the data manager, captures it, and quits.</summary>
     public static void CaptureDataManager(MainForm form, string file)
     {

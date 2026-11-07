@@ -23,6 +23,7 @@ public class SnapshotTests(ITestOutputHelper output)
         Assert.Equal(a[na].FileCount, b[nb].FileCount);
         Assert.Equal(a[na].DirCount, b[nb].DirCount);
         Assert.Equal(a[na].MTime, b[nb].MTime);
+        Assert.Equal(a[na].ATime, b[nb].ATime);
         Assert.Equal(a[na].Flags & ~NodeFlags.Used, b[nb].Flags & ~NodeFlags.Used);
         var ca = new List<int>();
         for (int c = a[na].FirstChild; c != NodeStore.None; c = a[c].NextSibling) ca.Add(c);

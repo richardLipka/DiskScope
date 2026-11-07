@@ -15,14 +15,16 @@ sealed partial class MainForm
     readonly ToolStripMenuItem _miRecycle = new() { ShortcutKeyDisplayString = "Del" };
     readonly ToolStripMenuItem _miDelete = new() { ShortcutKeyDisplayString = "Shift+Del" };
     readonly ToolStripMenuItem _miWindows = new();
+    readonly ToolStripMenuItem _miAi = new() { ShortcutKeyDisplayString = "Ctrl+Shift+C" };
     bool _rescanning;
 
     bool IsBusy => IsScanning || _rescanning || _saving || _loading;
 
     void BuildMenu()
     {
-        _menu.Items.AddRange([_miOpen, _miReveal, _miCopy, _miRescan, new ToolStripSeparator(), _miRecycle, _miDelete,
+        _menu.Items.AddRange([_miOpen, _miReveal, _miCopy, _miAi, _miRescan, new ToolStripSeparator(), _miRecycle, _miDelete,
             new ToolStripSeparator(), _miWindows]);
+        _miAi.Click += (_, _) => CopyAiPrompt(_tree.FocusedNode);
         _miOpen.Click += (_, _) => OpenSelected();
         _miReveal.Click += (_, _) => RevealSelected();
         _miCopy.Click += (_, _) => CopyPaths();
@@ -47,7 +49,7 @@ sealed partial class MainForm
             }
             bool single = nodes.Count == 1;
             bool isRoot = nodes.Contains(_rows.Store.Root);
-            _miOpen.Enabled = single;
+            _miOpen.Enabled = _miAi.Enabled = single;
             _miRescan.Enabled = single && _rows.Store[nodes[0]].IsDirectory && !IsBusy;
             _miRecycle.Enabled = _miDelete.Enabled = !isRoot && !IsBusy;
             _miWindows.Enabled = !IsBusy;
@@ -56,7 +58,8 @@ sealed partial class MainForm
         _tree.DeleteRequested += permanent => DeleteSelected(permanent);
         _tree.KeyDown += (_, e) =>
         {
-            if (e.KeyCode == Keys.C && e.Control) CopyPaths();
+            if (e.KeyCode == Keys.C && e.Control && e.Shift) CopyAiPrompt(_tree.FocusedNode);
+            else if (e.KeyCode == Keys.C && e.Control) CopyPaths();
             else if (e.KeyCode == Keys.F5) RescanSelected();
             else return;
             e.Handled = true;
@@ -74,6 +77,14 @@ sealed partial class MainForm
         _miRecycle.Text = L.T("Recycle");
         _miDelete.Text = L.T("DeletePermanent");
         _miWindows.Text = L.T("WindowsMenu") + "  (Shift+…)";
+        _miAi.Text = L.T("CopyAiPrompt");
+    }
+
+    void CopyAiPrompt(int node)
+    {
+        if (_rows == null || node == NodeStore.None || !_rows.Store.IsLive(node)) return;
+        Clipboard.SetText(AiPrompt.Build(_rows.Store, node));
+        _status.Text = L.T("AiCopied");
     }
 
     protected override void WndProc(ref Message m)

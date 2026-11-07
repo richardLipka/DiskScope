@@ -19,6 +19,7 @@ internal ref struct MftRecord
     public bool IsDirectory;
     public uint Attributes;
     public long MTime;
+    public long ATime;
     /// <summary>Clusters allocated to all data streams, in bytes.</summary>
     public long OnDisk;
     /// <summary>Logical size of the unnamed data stream, or -1 when this record does not carry it.</summary>
@@ -104,6 +105,7 @@ internal static class MftParser
             {
                 case AttrStandardInformation when value.Length >= 36:
                     result.MTime = I64(value, 8);
+                    result.ATime = I64(value, 24);
                     result.Attributes = U32(value, 32);
                     break;
                 case AttrFileName when value.Length >= 66:

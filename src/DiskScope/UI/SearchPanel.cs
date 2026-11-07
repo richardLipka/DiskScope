@@ -12,11 +12,19 @@ sealed class SearchPanel : UserControl
         OnDisk,
         Size,
         Modified,
+        Accessed,
         Folder,
     }
 
     static readonly long[] MinSizes = [0, 1L << 20, 10L << 20, 100L << 20, 1L << 30, 10L << 30];
-    static readonly int[] AgeDays = [0, 30, 182, 365, 3 * 365];
+
+    /// <summary>Age filters: unchanged or unopened for at least the given number of days.</summary>
+    static readonly (int Days, bool Access, string Key)[] Ages =
+    [
+        (0, false, "AnyAge"),
+        (30, false, "Older30d"), (182, false, "Older6m"), (365, false, "Older1y"), (3 * 365, false, "Older3y"),
+        (30, true, "Unopened30d"), (182, true, "Unopened6m"), (365, true, "Unopened1y"), (3 * 365, true, "Unopened3y"),
+    ];
 
     readonly TextBox _name = new() { Width = 260 };
     readonly ComboBox _kind = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 230 };
@@ -71,7 +79,7 @@ sealed class SearchPanel : UserControl
         _inView.CheckedChanged += (_, _) => RunSearch();
 
         foreach (ResultCol c in Enum.GetValues<ResultCol>())
-            _list.Columns.Add("", c switch { ResultCol.Name => 300, ResultCol.Folder => 520, ResultCol.Modified => 140, _ => 95 },
+            _list.Columns.Add("", c switch { ResultCol.Name => 300, ResultCol.Folder => 520, ResultCol.Modified or ResultCol.Accessed => 135, _ => 95 },
                 c is ResultCol.OnDisk or ResultCol.Size ? HorizontalAlignment.Right : HorizontalAlignment.Left);
         _list.RetrieveVirtualItem += (_, e) => e.Item = MakeItem(e.ItemIndex);
         _list.DoubleClick += (_, _) => RevealFocused();
@@ -100,10 +108,10 @@ sealed class SearchPanel : UserControl
         _name.PlaceholderText = L.T("SearchHint");
         Refill(_kind, [L.T("KindFiles"), L.T("KindFoldersOwn"), L.T("KindFolders"), L.T("KindAll")]);
         Refill(_minSize, MinSizes.Select(s => s == 0 ? L.T("AnySize") : "≥ " + Format.Size(s, L.Culture)).ToArray());
-        Refill(_age, AgeDays.Select(d => d == 0 ? L.T("AnyAge") : L.T(d switch { 30 => "Older30d", 182 => "Older6m", 365 => "Older1y", _ => "Older3y" })).ToArray());
+        Refill(_age, Ages.Select(a => L.T(a.Key)).ToArray());
         _inView.Text = L.T("OnlyInView");
         _go.Text = L.T("Find");
-        string[] cols = ["ColName", "ColOnDisk", "ColSize", "ColModified", "ColFolder"];
+        string[] cols = ["ColName", "ColOnDisk", "ColSize", "ColModified", "ColAccessed", "ColFolder"];
         for (int i = 0; i < cols.Length; i++) _list.Columns[i].Text = L.T(cols[i]);
         _list.Invalidate();
     }
@@ -141,14 +149,20 @@ sealed class SearchPanel : UserControl
 
     public int FocusedNode => _list.FocusedItem is { } item && item.Index < _results.Count ? _results[item.Index] : SelectedNodes().FirstOrDefault(NodeStore.None);
 
-    SearchQuery BuildQuery() => new()
+    SearchQuery BuildQuery()
     {
-        Name = _name.Text,
-        Kind = (SearchKind)Math.Max(0, _kind.SelectedIndex),
-        MinSize = MinSizes[Math.Max(0, _minSize.SelectedIndex)],
-        ModifiedBefore = AgeDays[Math.Max(0, _age.SelectedIndex)] is int days && days > 0 ? DateTime.UtcNow.AddDays(-days) : null,
-        Scope = _inView.Checked && CurrentFolder != null ? CurrentFolder() : NodeStore.None,
-    };
+        var age = Ages[Math.Max(0, _age.SelectedIndex)];
+        DateTime? before = age.Days > 0 ? DateTime.UtcNow.AddDays(-age.Days) : null;
+        return new SearchQuery
+        {
+            Name = _name.Text,
+            Kind = (SearchKind)Math.Max(0, _kind.SelectedIndex),
+            MinSize = MinSizes[Math.Max(0, _minSize.SelectedIndex)],
+            ModifiedBefore = age.Access ? null : before,
+            AccessedBefore = age.Access ? before : null,
+            Scope = _inView.Checked && CurrentFolder != null ? CurrentFolder() : NodeStore.None,
+        };
+    }
 
     public async void RunSearch()
     {
@@ -200,7 +214,7 @@ sealed class SearchPanel : UserControl
 
     ListViewItem MakeItem(int index)
     {
-        if (_store == null || index >= _results.Count) return new ListViewItem(["", "", "", "", ""]);
+        if (_store == null || index >= _results.Count) return new ListViewItem(["", "", "", "", "", ""]);
         int node = _results[index];
         ref var n = ref _store[node];
         var kind = (SearchKind)Math.Max(0, _kind.SelectedIndex);
@@ -210,7 +224,8 @@ sealed class SearchPanel : UserControl
             _store.GetName(node),
             Format.Size(onDisk, L.Culture),
             Format.Size(n.Length, L.Culture),
-            n.MTime > 0 ? DateTime.FromFileTimeUtc(n.MTime).ToLocalTime().ToString("g", L.Culture) : "",
+            TreeListView.Date(n.MTime),
+            TreeListView.Date(n.ATime),
             parent == NodeStore.None ? "" : _store.GetPath(parent),
         ]);
     }

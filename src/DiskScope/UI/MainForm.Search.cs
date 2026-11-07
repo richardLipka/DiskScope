@@ -13,6 +13,7 @@ sealed partial class MainForm
     readonly ToolStripMenuItem _rmOpen = new();
     readonly ToolStripMenuItem _rmReveal = new();
     readonly ToolStripMenuItem _rmCopy = new() { ShortcutKeyDisplayString = "Ctrl+C" };
+    readonly ToolStripMenuItem _rmAi = new();
     readonly ToolStripMenuItem _rmRecycle = new() { ShortcutKeyDisplayString = "Del" };
     readonly ToolStripMenuItem _rmDelete = new() { ShortcutKeyDisplayString = "Shift+Del" };
 
@@ -25,7 +26,8 @@ sealed partial class MainForm
         _search.RevealRequested += RevealInTree;
         _search.DeleteRequested += permanent => DeleteNodes(_search.SelectedNodes(), permanent);
 
-        _resultMenu.Items.AddRange([_rmShow, _rmOpen, _rmReveal, _rmCopy, new ToolStripSeparator(), _rmRecycle, _rmDelete]);
+        _resultMenu.Items.AddRange([_rmShow, _rmOpen, _rmReveal, _rmCopy, _rmAi, new ToolStripSeparator(), _rmRecycle, _rmDelete]);
+        _rmAi.Click += (_, _) => CopyAiPrompt(_search.FocusedNode);
         _rmShow.Click += (_, _) => RevealInTree(_search.FocusedNode);
         _rmOpen.Click += (_, _) => OpenNode(_search.FocusedNode);
         _rmReveal.Click += (_, _) => RevealNode(_search.FocusedNode);
@@ -36,7 +38,7 @@ sealed partial class MainForm
         {
             var nodes = _search.SelectedNodes();
             if (nodes.Count == 0) e.Cancel = true;
-            _rmShow.Enabled = _rmOpen.Enabled = nodes.Count == 1;
+            _rmShow.Enabled = _rmOpen.Enabled = _rmAi.Enabled = nodes.Count == 1;
             _rmRecycle.Enabled = _rmDelete.Enabled = !IsBusy;
         };
         _search.ResultMenu = _resultMenu;
@@ -50,6 +52,7 @@ sealed partial class MainForm
         _rmOpen.Text = L.T("Open");
         _rmReveal.Text = L.T("Reveal");
         _rmCopy.Text = L.T("CopyPath");
+        _rmAi.Text = L.T("CopyAiPrompt");
         _rmRecycle.Text = L.T("Recycle");
         _rmDelete.Text = L.T("DeletePermanent");
         _search.ApplyTexts();

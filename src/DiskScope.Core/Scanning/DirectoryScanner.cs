@@ -100,7 +100,7 @@ public sealed unsafe class DirectoryScanner : IScanner
             }
 
             int head = NodeStore.None, tail = NodeStore.None;
-            long size = 0, length = 0;
+            long size = 0, length = 0, newestWrite = 0, newestAccess = 0;
             int files = 0, dirs = 0;
             bool restart = true;
             var subdirs = new List<WorkItem>();
@@ -123,6 +123,7 @@ public sealed unsafe class DirectoryScanner : IScanner
                 {
                     // FILE_FULL_DIR_INFORMATION
                     uint next = *(uint*)entry;
+                    long atime = *(long*)(entry + 16);
                     long mtime = *(long*)(entry + 24);
                     long eof = *(long*)(entry + 40);
                     long alloc = *(long*)(entry + 48);
@@ -143,9 +144,12 @@ public sealed unsafe class DirectoryScanner : IScanner
                             follow = false;
                         }
 
-                        int node = store.Add(item.Node, name, flags, attrs, isDir ? 0 : alloc, isDir ? 0 : eof, mtime);
+                        // A directory's own access time is left out: listing it (as this scan does) updates it.
+                        int node = store.Add(item.Node, name, flags, attrs, isDir ? 0 : alloc, isDir ? 0 : eof, mtime, isDir ? 0 : atime);
                         if (tail == NodeStore.None) head = node; else store[tail].NextSibling = node;
                         tail = node;
+                        newestWrite = Math.Max(newestWrite, mtime);
+                        if (!isDir) newestAccess = Math.Max(newestAccess, atime);
 
                         if (isDir)
                         {
@@ -166,6 +170,7 @@ public sealed unsafe class DirectoryScanner : IScanner
 
             if (head != NodeStore.None) store.PublishChildren(item.Node, head);
             store.AddToAncestors(item.Node, size, length, files, dirs);
+            store.MaxTimesToAncestors(item.Node, newestWrite, newestAccess);
             store.SetFlag(item.Node, NodeFlags.Scanned);
             Interlocked.Add(ref progress.Files, files);
             Interlocked.Add(ref progress.Directories, dirs);

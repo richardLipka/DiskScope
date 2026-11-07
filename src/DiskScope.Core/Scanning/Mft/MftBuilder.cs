@@ -20,7 +20,7 @@ internal sealed class MftBuilder
     readonly Dictionary<uint, Nameless> _nameless = [];
 
     sealed record Extension(uint BaseRecord, List<(uint Parent, string Name)> Names, long OnDisk, long Length);
-    record struct Nameless(NodeFlags Flags, uint Attributes, long MTime, long OnDisk, long Length);
+    record struct Nameless(NodeFlags Flags, uint Attributes, long MTime, long ATime, long OnDisk, long Length);
 
     public MftBuilder(NodeStore store, ScanProgress progress, long totalRecords)
     {
@@ -54,7 +54,7 @@ internal sealed class MftBuilder
         long length = Math.Max(0, r.Length);
         if (_names.Count == 0)
         {
-            _nameless[number] = new Nameless(flags, r.Attributes, r.MTime, r.OnDisk, length);
+            _nameless[number] = new Nameless(flags, r.Attributes, r.MTime, r.ATime, r.OnDisk, length);
             return;
         }
         for (int i = 0; i < _names.Count; i++)
@@ -62,7 +62,7 @@ internal sealed class MftBuilder
             var n = _names[i];
             bool primary = i == 0;
             int node = AddNode(n.Parent, NameAt(n), primary ? flags : flags | NodeFlags.HardLink, r.Attributes,
-                primary ? r.OnDisk : 0, primary ? length : 0, r.MTime);
+                primary ? r.OnDisk : 0, primary ? length : 0, r.MTime, r.ATime);
             if (primary) _recordToNode[number] = node;
         }
     }
@@ -77,11 +77,12 @@ internal sealed class MftBuilder
 
     ReadOnlySpan<char> NameAt((uint Parent, int Start, int Length) n) => _nameChars.AsSpan(n.Start, n.Length);
 
-    int AddNode(uint parentRecord, ReadOnlySpan<char> name, NodeFlags flags, uint attributes, long onDisk, long length, long mtime)
+    int AddNode(uint parentRecord, ReadOnlySpan<char> name, NodeFlags flags, uint attributes, long onDisk, long length, long mtime, long atime)
     {
         bool dir = (flags & NodeFlags.Directory) != 0;
         // Parent holds the parent's record number until Finish links the tree.
-        int node = _store.Add((int)parentRecord, name, flags, attributes, dir ? 0 : onDisk, dir ? 0 : length, mtime);
+        // A directory's own access time is left out: merely listing it updates it.
+        int node = _store.Add((int)parentRecord, name, flags, attributes, dir ? 0 : onDisk, dir ? 0 : length, mtime, dir ? 0 : atime);
         if (dir) _progress.Directories++;
         else if ((flags & NodeFlags.HardLink) == 0)
         {
@@ -112,7 +113,7 @@ internal sealed class MftBuilder
                     continue;
                 }
                 var (parent, name) = ext.Names[0];
-                primary = AddNode(parent, name, nl.Flags, nl.Attributes, nl.OnDisk, nl.Length, nl.MTime);
+                primary = AddNode(parent, name, nl.Flags, nl.Attributes, nl.OnDisk, nl.Length, nl.MTime, nl.ATime);
                 _recordToNode[ext.BaseRecord] = primary;
                 _nameless.Remove(ext.BaseRecord);
                 ext.Names.RemoveAt(0);
@@ -121,7 +122,7 @@ internal sealed class MftBuilder
 
             ref var p = ref _store[primary];
             foreach (var (parent, name) in ext.Names)
-                AddNode(parent, name, p.Flags | NodeFlags.HardLink, p.Attributes, 0, 0, p.MTime);
+                AddNode(parent, name, p.Flags | NodeFlags.HardLink, p.Attributes, 0, 0, p.MTime, p.ATime);
             if (!p.IsDirectory)
             {
                 p.Size += ext.OnDisk;

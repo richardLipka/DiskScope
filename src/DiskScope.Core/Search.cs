@@ -23,6 +23,8 @@ public sealed record SearchQuery
     /// <summary>Only items last modified before this time (UTC).</summary>
     public DateTime? ModifiedBefore { get; init; }
     public DateTime? ModifiedAfter { get; init; }
+    /// <summary>Only items last accessed before this time (UTC); items with an unknown access time do not match.</summary>
+    public DateTime? AccessedBefore { get; init; }
     /// <summary>Search only under this node; the root when <see cref="NodeStore.None"/>.</summary>
     public int Scope { get; init; } = NodeStore.None;
     /// <summary>How many of the largest matches to return.</summary>
@@ -50,6 +52,7 @@ public static class Search
         var patterns = ParsePatterns(q.Name);
         long fromTime = q.ModifiedAfter?.ToFileTimeUtc() ?? long.MinValue;
         long toTime = q.ModifiedBefore?.ToFileTimeUtc() ?? long.MaxValue;
+        long accessedBefore = q.AccessedBefore?.ToFileTimeUtc() ?? long.MaxValue;
         int scope = q.Scope == NodeStore.None ? store.Root : q.Scope;
 
         // Ranges of the node table are searched in parallel, each keeping its own top list; then merged.
@@ -57,7 +60,8 @@ public static class Search
         const int RangeSize = 1 << 18;
         var parts = new (PriorityQueue<int, long> Heap, long Matches, long Total)[(count + RangeSize - 1) / RangeSize];
         Parallel.For(0, parts.Length, new ParallelOptions { CancellationToken = cancel }, part =>
-            parts[part] = SearchRange(store, q, patterns, fromTime, toTime, scope, part * RangeSize, Math.Min(count, (part + 1) * RangeSize), cancel));
+            parts[part] = SearchRange(store, q, patterns, fromTime, toTime, accessedBefore, scope,
+                part * RangeSize, Math.Min(count, (part + 1) * RangeSize), cancel));
 
         var heap = new PriorityQueue<int, long>(q.Limit + 1);
         long matches = 0, total = 0;
@@ -81,7 +85,7 @@ public static class Search
     }
 
     static (PriorityQueue<int, long>, long, long) SearchRange(NodeStore store, SearchQuery q, string[] patterns, long fromTime, long toTime,
-        int scope, int from, int to, CancellationToken cancel)
+        long accessedBefore, int scope, int from, int to, CancellationToken cancel)
     {
         // Min-heap of the best matches so far, keyed by rank size.
         var heap = new PriorityQueue<int, long>(q.Limit + 1);
@@ -97,6 +101,7 @@ public static class Search
             bool dir = n.IsDirectory;
             if (q.Kind == SearchKind.Files ? dir : q.Kind is SearchKind.Folders or SearchKind.FoldersOwnContent && !dir) continue;
             if (n.MTime < fromTime || n.MTime > toTime) continue;
+            if (accessedBefore != long.MaxValue && (n.ATime == 0 || n.ATime > accessedBefore)) continue;
             if (!dir && (n.Size < q.MinSize || n.Size > q.MaxSize)) continue;
             if (dir && q.Kind != SearchKind.FoldersOwnContent && (n.Size < q.MinSize || n.Size > q.MaxSize)) continue;
             if (patterns.Length > 0 && !Matches(patterns, store.CopyName(i, nameBuf))) continue;

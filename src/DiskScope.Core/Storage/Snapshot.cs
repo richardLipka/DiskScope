@@ -30,10 +30,16 @@ public static class Snapshot
 {
     public const string Extension = ".dscan";
     static readonly byte[] Magic = "DSCN"u8.ToArray();
-    const ushort FormatVersion = 1;
+    /// <summary>1: first format; 2: adds last access times.</summary>
+    const ushort FormatVersion = 2;
 
     public static void Save(NodeStore store, string filePath, DateTime scanTimeUtc, TimeSpan duration, ScanMode mode,
-        bool complete, long errors, Action<double>? progress = null)
+        bool complete, long errors, Action<double>? progress = null) =>
+        Save(store, filePath, scanTimeUtc, duration, mode, complete, errors, progress, FormatVersion);
+
+    /// <summary>Writing an older format version is only for testing that it can still be read.</summary>
+    internal static void Save(NodeStore store, string filePath, DateTime scanTimeUtc, TimeSpan duration, ScanMode mode,
+        bool complete, long errors, Action<double>? progress, ushort formatVersion)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(filePath)!);
         string temp = filePath + ".tmp";
@@ -42,7 +48,7 @@ public static class Snapshot
         {
             var header = new BinaryWriter(fs, Encoding.UTF8, leaveOpen: true);
             header.Write(Magic);
-            header.Write(FormatVersion);
+            header.Write(formatVersion);
             header.Write(store.RootPath);
             header.Write(scanTimeUtc.Ticks);
             header.Write(duration.Ticks);
@@ -59,7 +65,7 @@ public static class Snapshot
             using var deflate = new DeflateStream(fs, CompressionLevel.Fastest, leaveOpen: true);
             using var buffered = new BufferedStream(deflate, 1 << 20);
             var w = new BinaryWriter(buffered);
-            WriteTree(store, w, root.FileCount + root.DirCount + 1, progress);
+            WriteTree(store, w, root.FileCount + root.DirCount + 1, progress, formatVersion);
             w.Flush();
         }
         File.Move(temp, filePath, overwrite: true);
@@ -79,7 +85,7 @@ public static class Snapshot
         return count;
     }
 
-    static void WriteTree(NodeStore store, BinaryWriter w, long total, Action<double>? progress)
+    static void WriteTree(NodeStore store, BinaryWriter w, long total, Action<double>? progress, ushort version)
     {
         long written = 0;
         var stack = new Stack<int>();
@@ -95,6 +101,7 @@ public static class Snapshot
             w.Write7BitEncodedInt((int)(n.Flags & ~NodeFlags.Used));
             w.Write7BitEncodedInt((int)n.Attributes);
             w.Write(n.MTime);
+            if (version >= 2) w.Write(n.ATime);
             if (n.IsDirectory)
             {
                 children.Clear();
@@ -115,15 +122,15 @@ public static class Snapshot
     public static SnapshotInfo ReadInfo(string filePath)
     {
         using var fs = File.OpenRead(filePath);
-        return ReadHeader(fs, filePath);
+        return ReadHeader(fs, filePath, out _);
     }
 
-    static SnapshotInfo ReadHeader(Stream fs, string filePath)
+    static SnapshotInfo ReadHeader(Stream fs, string filePath, out ushort version)
     {
         var r = new BinaryReader(fs, Encoding.UTF8, leaveOpen: true);
         if (!r.ReadBytes(4).AsSpan().SequenceEqual(Magic)) throw new InvalidDataException("Not a DiskScope snapshot.");
-        ushort version = r.ReadUInt16();
-        if (version != FormatVersion) throw new InvalidDataException($"Unsupported snapshot version {version}.");
+        version = r.ReadUInt16();
+        if (version is < 1 or > FormatVersion) throw new InvalidDataException($"Unsupported snapshot version {version}.");
         return new SnapshotInfo(filePath, r.ReadString(), new DateTime(r.ReadInt64(), DateTimeKind.Utc), new TimeSpan(r.ReadInt64()),
             (ScanMode)r.ReadByte(), r.ReadBoolean(), r.ReadInt64(), r.ReadInt64(), r.ReadInt64(), r.ReadInt64(), r.ReadInt64(), r.ReadInt64());
     }
@@ -131,7 +138,7 @@ public static class Snapshot
     public static NodeStore Load(string filePath, out SnapshotInfo info, Action<double>? progress = null, CancellationToken cancel = default)
     {
         using var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 16);
-        info = ReadHeader(fs, filePath);
+        info = ReadHeader(fs, filePath, out ushort version);
         using var deflate = new DeflateStream(fs, CompressionMode.Decompress);
         using var buffered = new BufferedStream(deflate, 1 << 20);
         var r = new BinaryReader(buffered);
@@ -157,6 +164,7 @@ public static class Snapshot
             var flags = (NodeFlags)r.Read7BitEncodedInt();
             uint attrs = (uint)r.Read7BitEncodedInt();
             long mtime = r.ReadInt64();
+            long atime = version >= 2 ? r.ReadInt64() : 0;
             bool isDir = (flags & NodeFlags.Directory) != 0;
             int childCount = 0;
             long size = 0, length = 0;
@@ -167,7 +175,7 @@ public static class Snapshot
                 length = r.Read7BitEncodedInt64();
             }
 
-            int node = store.AddRaw(parent, nameBuf.AsSpan(0, nameBytes), encodedLen, flags, attrs, size, length, mtime);
+            int node = store.AddRaw(parent, nameBuf.AsSpan(0, nameBytes), encodedLen, flags, attrs, size, length, mtime, atime);
             if (parent != NodeStore.None)
             {
                 var top = stack.Pop();

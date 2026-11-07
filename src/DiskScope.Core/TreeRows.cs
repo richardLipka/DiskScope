@@ -7,6 +7,7 @@ public enum SortColumn
     Length,
     Files,
     Modified,
+    Accessed,
     Delta,
 }
 
@@ -102,6 +103,7 @@ public sealed class TreeRows(NodeStore store)
             SortColumn.Length => (a, b) => store[a].Length.CompareTo(store[b].Length),
             SortColumn.Files => (a, b) => FileCount(a).CompareTo(FileCount(b)),
             SortColumn.Modified => (a, b) => store[a].MTime.CompareTo(store[b].MTime),
+            SortColumn.Accessed => (a, b) => store[a].ATime.CompareTo(store[b].ATime),
             SortColumn.Delta when DeltaOf != null => (a, b) => DeltaOf(a).CompareTo(DeltaOf(b)),
             _ => (a, b) => store[a].Size.CompareTo(store[b].Size),
         };

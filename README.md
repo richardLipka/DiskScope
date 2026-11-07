@@ -27,6 +27,11 @@ velikosti všech složek a umožní rychle najít, kde zabírají místo velké 
   Ukáže, co od minula přibylo.
 - **Hledání** (Ctrl+F): největší soubory, složky podle vlastního obsahu, filtr podle jména (`*.iso; *.zip`),
   velikosti a stáří, v celém stromu nebo jen v otevřené složce.
+- **Poslední změna a poslední přístup**: u souboru jeho vlastní, u složky nejnovější uvnitř. Hledání umí
+  „nezměněno / neotevřeno rok“. Pozor: přístup mohou aktualizovat i antivirus, indexování nebo zálohování.
+- **Kopírovat dotaz pro AI** (Ctrl+Shift+C): sestaví popis souboru nebo složky (velikost, data, největší
+  položky, typy souborů) s otázkami, k čemu slouží a zda je bezpečné ji smazat. Vložíte ho do libovolného AI
+  asistenta. Aplikace sama nic neodesílá.
 - Rozhraní v češtině a angličtině.
 
 ### Ovládání
@@ -82,6 +87,11 @@ of all folders and lets you quickly find where large files and folders take up s
   what has been added since.
 - **Search** (Ctrl+F): largest files, folders by their own content, filters by name (`*.iso; *.zip`),
   size and age, in the whole tree or only the open folder.
+- **Last modified and last accessed**: a file's own, a folder's newest inside. Search can find items
+  "unchanged / not opened for a year". Note that antivirus, indexing or backup may update access times too.
+- **Copy question for AI** (Ctrl+Shift+C): describes a file or folder (size, dates, largest entries, file
+  types) with questions on what it is for and whether it is safe to delete, ready to paste into any AI
+  assistant. The app itself sends nothing.
 - Czech and English user interface.
 
 ### Controls
