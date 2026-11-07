@@ -66,6 +66,9 @@ public class LocalizationTests
         // Keys built at run time from enum names.
         foreach (string s in new[] { "Safe", "Caution", "System" }) used.UnionWith([$"Safety{s}", $"Safety{s}Short"]);
         foreach (string a in new[] { "None", "DeleteContents", "Delete" }) used.Add($"Action{a}");
+        foreach (string c in new[] { "Likely", "Possible" }) used.Add($"Orphan{c}");
+        foreach (string k in new[] { "StoreApp", "ProgramFiles", "AppData", "ProgramData" }) used.UnionWith([$"OrphanKind{k}", $"OrphanWhy{k}"]);
+        foreach (string s in new[] { "Waiting", "Running", "Done", "Cancelled" }) used.Add($"QueueState{s}");
 
         Assert.True(used.Count > 100);
         Assert.Empty(used.Except(DefinedKeys()));

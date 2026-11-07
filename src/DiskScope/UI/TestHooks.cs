@@ -64,6 +64,19 @@ static class TestHooks
         };
     }
 
+    /// <summary>When the tree is ready, opens the abandoned-data panel, captures it, quits.</summary>
+    public static void CaptureOrphans(MainForm form, string file)
+    {
+        Action open = () => form.ShowOrphansForTest();
+        form.ScanCompleted += open;
+        form.SnapshotLoaded += open;
+        form.OrphanPanelForTest.Found += () => After(800, () =>
+        {
+            Capture(form, file);
+            form.Close();
+        });
+    }
+
     /// <summary>When the tree is ready, opens the cleanup panel, captures it with the first item selected, quits.</summary>
     public static void CaptureCleanup(MainForm form, string file)
     {

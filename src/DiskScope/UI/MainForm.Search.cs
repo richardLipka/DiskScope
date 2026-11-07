@@ -134,5 +134,6 @@ sealed partial class MainForm
     {
         if (BottomVisible(_searchTab)) _search.RemoveDead();
         else if (BottomVisible(_cleanupTab)) _cleanup.RemoveDead();
+        else RefreshAnalysisAfterChange();
     }
 }

@@ -57,6 +57,7 @@ sealed partial class MainForm : Form
         BuildCleanup();
         BuildSearch();
         BuildDeleteQueue();
+        BuildAnalysis();
         _bottomTabs.TabPages.Add(_deleteTab);
         Controls.Add(_split);
         Controls.Add(_detail);
@@ -127,7 +128,7 @@ sealed partial class MainForm : Form
         BuildHistory();
         BuildCompare();
         _toolbar.Items.AddRange([_target, _browse, new ToolStripSeparator(), _scan, _stop, new ToolStripSeparator(), _history, _filter,
-            new ToolStripSeparator(), _searchButton, _cleanupButton, _up, _settingsMenu, _language, _admin]);
+            new ToolStripSeparator(), _searchButton, _cleanupButton, _analysisMenu, _up, _settingsMenu, _language, _admin]);
         BuildSettings();
         FillTargets();
     }
@@ -166,6 +167,7 @@ sealed partial class MainForm : Form
         ApplySearchTexts();
         ApplyQueueTexts();
         ApplySettingsTexts();
+        ApplyAnalysisTexts();
         string? selected = SelectedTarget;
         FillTargets();
         if (selected != null) SelectTarget(selected);
@@ -249,6 +251,7 @@ sealed partial class MainForm : Form
         ReattachCompare();
         _search.SetStore(store);
         _cleanup.SetStore(store);
+        SetAnalysisStore(store);
         RefreshBottomPanel();
         UpdateBreadcrumb();
         UpdateStatus();

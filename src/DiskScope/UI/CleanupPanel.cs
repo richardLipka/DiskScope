@@ -83,6 +83,8 @@ sealed class CleanupPanel : UserControl
         if (_store != null) FindLocations();
     }
 
+    public CleanupCatalog Catalog => _catalog;
+
     public void LoadCatalog()
     {
         _catalog = CleanupCatalog.Load(UserCatalogPath, out _catalogError);
