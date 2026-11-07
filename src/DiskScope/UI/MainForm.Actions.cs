@@ -225,11 +225,14 @@ sealed partial class MainForm
         finally
         {
             _rescanning = false;
-            if (!IsScanning) _timer.Stop();
-            Tick();
-            UpdateButtons();
-            UpdateDetail();
-            RefreshSearchAfterChange();
+            if (!IsDisposed) // the window may have closed while rescanning
+            {
+                if (!IsScanning) _timer.Stop();
+                Tick();
+                UpdateButtons();
+                UpdateDetail();
+                RefreshSearchAfterChange();
+            }
         }
     }
 

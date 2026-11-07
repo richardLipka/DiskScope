@@ -98,7 +98,7 @@ public sealed class DeleteQueue : IDisposable
             cancelled = _jobs.Where(j => j.State == DeleteState.Waiting).ToList();
             foreach (var j in cancelled) j.State = DeleteState.Cancelled;
         }
-        foreach (var j in cancelled) JobChanged?.Invoke(j);
+        foreach (var j in cancelled) Notify(j);
         return cancelled;
     }
 
@@ -137,7 +137,7 @@ public sealed class DeleteQueue : IDisposable
                 continue;
             }
 
-            JobChanged?.Invoke(job);
+            Notify(job);
             try
             {
                 if (_guard.CheckResolved(job.Path) != DeletionGuard.Verdict.Allowed)
@@ -165,7 +165,20 @@ public sealed class DeleteQueue : IDisposable
                 job.Error = ex.Message;
                 job.State = DeleteState.Failed;
             }
+            Notify(job);
+        }
+    }
+
+    /// <summary>Raises <see cref="JobChanged"/>; a failing subscriber must not stop the worker (and with it the process).</summary>
+    void Notify(DeleteJob job)
+    {
+        try
+        {
             JobChanged?.Invoke(job);
+        }
+        catch (Exception)
+        {
+            // The job's state is still right; only this notification is lost.
         }
     }
 
@@ -173,7 +186,7 @@ public sealed class DeleteQueue : IDisposable
     {
         job.Error = error;
         job.State = DeleteState.Failed;
-        JobChanged?.Invoke(job);
+        Notify(job);
     }
 
     /// <summary>

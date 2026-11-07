@@ -116,7 +116,7 @@ sealed class CleanupPanel : UserControl
         var catalog = _catalog;
         _summary.Text = L.T("Searching");
         var matches = await Task.Run(() => CleanupFinder.Find(store, catalog));
-        if (store != _store) return;
+        if (IsDisposed || store != _store) return;
         _matches = matches;
         Fill();
         _advice.Text = _catalogError != null ? L.T("CatalogError", _catalogError) : L.T("CleanupHint");

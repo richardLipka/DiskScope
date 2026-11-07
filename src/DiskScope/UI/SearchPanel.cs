@@ -175,7 +175,7 @@ sealed class SearchPanel : UserControl
         try
         {
             var result = await Task.Run(() => Search.Run(store, query, cancel.Token));
-            if (cancel.IsCancellationRequested || store != _store) return;
+            if (IsDisposed || cancel.IsCancellationRequested || store != _store) return;
             _results = result.Nodes;
             _list.SelectedIndices.Clear();
             _list.VirtualListSize = _results.Count;

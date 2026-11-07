@@ -16,7 +16,7 @@ namespace DiskScope.UI;
 ///   --scan folder --duplicate-test file.png [--duplicate-folder path]   searches duplicates (in a folder), captures
 ///   --map-test file.png                                                 opens the treemap, captures
 ///   --scan folder --queue-test file.png                                 queues items in a paused queue, captures, cancels
-///   --delete-test report.txt                                            deletes test items and writes a report
+///   --delete-test report.txt [--delete-delay ms]                        deletes test items and writes a report
 /// </summary>
 static class TestHooks
 {
@@ -35,7 +35,8 @@ static class TestHooks
         if (Arg("--cleanup-test") is string cleanupShot) CaptureCleanup(form, cleanupShot, args.Contains("--cleanup-mark"));
         if (Arg("--ai-prompt") is string aiPath && Arg("--out") is string aiOut) WriteAiPrompt(form, aiPath, aiOut);
         if (Arg("--data-manager") is string dmShot) CaptureDataManager(form, dmShot);
-        if (Arg("--delete-test") is string report) RunDeleteTest(form, report);
+        if (Arg("--delete-test") is string report)
+            RunDeleteTest(form, report, int.TryParse(Arg("--delete-delay"), out int delay) ? delay : 0);
     }
 
     public static void CaptureAfterScan(MainForm form, string file, int expandLevels, bool withMenu, bool afterLoad)
@@ -196,9 +197,10 @@ static class TestHooks
     /// Expects a folder holding "recycle.bin" and "permanent\" (with files inside): deletes the first to the
     /// recycle bin and the second permanently through the app's own code path, then writes a report.
     /// </summary>
-    public static void RunDeleteTest(MainForm form, string report)
+    public static void RunDeleteTest(MainForm form, string report, int delayMs)
     {
-        form.ScanCompleted += () =>
+        // The delay leaves time to break the disk (e.g. remove a subst drive) between the scan and the deleting.
+        form.ScanCompleted += () => After(Math.Max(1, delayMs), () =>
         {
             var lines = new List<string>();
             try
@@ -214,6 +216,7 @@ static class TestHooks
                 lines.Add($"exists recycle={File.Exists(Path.Combine(store.RootPath, "recycle.bin"))} permanent={Directory.Exists(Path.Combine(store.RootPath, "permanent"))}");
                 lines.Add($"tree recycle={store.FindPath(Path.Combine(store.RootPath, "recycle.bin")) != NodeStore.None} permanent={store.FindPath(Path.Combine(store.RootPath, "permanent")) != NodeStore.None}");
                 lines.Add($"size after={store[store.Root].Size} files={store[store.Root].FileCount} dirs={store[store.Root].DirCount}");
+                lines.AddRange(form.QueueReportForTest());
             }
             catch (Exception ex)
             {
@@ -221,7 +224,7 @@ static class TestHooks
             }
             File.WriteAllLines(report, lines);
             form.Close();
-        };
+        });
     }
 
     static void After(int ms, Action action)

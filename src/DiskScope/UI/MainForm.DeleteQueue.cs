@@ -93,8 +93,10 @@ sealed partial class MainForm
             _tree.Reload();
             if (wasFocused && row >= 0) _tree.SelectRow(Math.Min(row, _rows.Count - 1));
         }
-        else if (job.State == DeleteState.Failed && job.IsDirectory)
+        else if (job.State == DeleteState.Failed && job.IsDirectory && Directory.Exists(job.Path))
         {
+            // Partly deleted: rescan so its size is right. A folder on a disk that went away is left as it was,
+            // since rescanning would only drop its contents from the tree.
             Rescan(job.Node);
         }
         _tree.Invalidate();
@@ -129,6 +131,9 @@ sealed partial class MainForm
         EnqueueDelete(children.Skip(children.Count / 2).ToList(), permanent: true);
         ShowBottom(_deleteTab);
     }
+
+    internal IEnumerable<string> QueueReportForTest() =>
+        _queue.Jobs.Select(j => $"job {Path.GetFileName(j.Path)} {j.Method} {j.State} {j.Error}");
 
     internal void CancelQueueForTest()
     {

@@ -104,7 +104,7 @@ sealed class OrphanPanel : UserControl
             var known = CleanupFinder.Find(store, catalog).Select(m => m.Node);
             return (new OrphanFinder().Find(store, programs, families, known, DateTime.UtcNow), programs, families);
         });
-        if (store != _store) return;
+        if (IsDisposed || store != _store) return;
         _programs = programs;
         _families = families;
         _searched = true;

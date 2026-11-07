@@ -70,9 +70,22 @@ sealed partial class MainForm
         _loading = true;
         UpdateButtons();
         var progress = new Progress<double>(p => _status.Text = L.T("Loading", (int)(p * 100)));
+        NodeStore baseline;
         try
         {
-            var baseline = await Task.Run(() => Snapshot.Load(info.FilePath, out _, ((IProgress<double>)progress).Report));
+            baseline = await Task.Run(() => Snapshot.Load(info.FilePath, out _, ((IProgress<double>)progress).Report));
+        }
+        catch (Exception ex)
+        {
+            _loading = false;
+            if (IsDisposed) return;
+            UpdateButtons();
+            MessageBox.Show(this, L.T("LoadFailed", ex.Message), Text, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+        if (IsDisposed || _rows == null) return; // closed while loading
+        try
+        {
             _compareInfo = info;
             _compare = new TreeComparison(_rows.Store, baseline);
             if (_tree.Columns.Count <= (int)Col.Delta)
@@ -81,10 +94,6 @@ sealed partial class MainForm
             _rows.Descending = true;
             _filter.Visible = true;
             ApplyCompareToRows();
-        }
-        catch (Exception ex)
-        {
-            MessageBox.Show(this, L.T("LoadFailed", ex.Message), Text, MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
         finally
         {

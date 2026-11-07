@@ -160,23 +160,28 @@ sealed class DuplicatePanel : UserControl
         _list.Items.Clear();
         _list.Groups.Clear();
         _timer.Start();
+        string? outcome = null;
         try
         {
             _groups = await Task.Run(() => finder.Find(store, progress, cancel.Token));
-            if (store == _store) Fill();
         }
         catch (OperationCanceledException)
         {
-            _summary.Text = L.T("DupCancelled");
+            outcome = L.T("DupCancelled");
         }
-        finally
+        catch (Exception ex)
         {
-            _timer.Stop();
-            _cancel = null;
-            _progressBar.Visible = false;
-            _start.Text = L.T("DupStart");
-            Finished?.Invoke();
+            // A failing disk or a vanished folder ends the search with a message, not an error dialog.
+            outcome = L.T("DupFailed", ex is AggregateException ae ? ae.InnerException?.Message ?? ex.Message : ex.Message);
         }
+        _timer.Stop();
+        _cancel = null;
+        if (IsDisposed) return; // the window closed meanwhile
+        _progressBar.Visible = false;
+        _start.Text = L.T("DupStart");
+        if (outcome != null) _summary.Text = outcome;
+        else if (store == _store) Fill();
+        Finished?.Invoke();
     }
 
     void ShowProgress()

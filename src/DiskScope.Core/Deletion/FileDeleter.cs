@@ -27,12 +27,16 @@ public sealed class FileDeleter : IFileDeleter
 
     public DeleteResult Delete(string path, bool isDirectory, DeleteMethod method, CancellationToken cancel)
     {
+        // A disconnected or failing disk: report it rather than try (and rather than mistake it for "gone").
+        if (Probe(path) is { State: PathState.Unavailable } before)
+            return new DeleteResult(false, 0, before.Error);
+
         int failed = 0;
         string? error = null;
         try
         {
             if (method == DeleteMethod.RecycleBin) error = Recycle(path);
-            else DeleteTree(new DirectoryInfo(path).Exists ? new DirectoryInfo(path) : new FileInfo(path), ref failed, ref error, cancel);
+            else DeleteTree(isDirectory || Directory.Exists(path) ? new DirectoryInfo(path) : new FileInfo(path), ref failed, ref error, cancel);
         }
         catch (OperationCanceledException)
         {
@@ -42,40 +46,102 @@ public sealed class FileDeleter : IFileDeleter
         {
             error = ex.Message;
         }
-        bool gone = !File.Exists(path) && !Directory.Exists(path);
-        return new DeleteResult(gone, failed, gone ? null : error ?? "?");
+        // Only "not found" counts as gone; any other answer (device error, not ready, denied) means it may still be there.
+        var after = Probe(path);
+        bool gone = after.State == PathState.Missing;
+        return new DeleteResult(gone, failed, gone ? null : error ?? after.Error ?? "?");
     }
 
-    static void DeleteTree(FileSystemInfo item, ref int failed, ref string? error, CancellationToken cancel)
+    enum PathState
     {
-        cancel.ThrowIfCancellationRequested();
-        bool link = (item.Attributes & FileAttributes.ReparsePoint) != 0;
-        if (item is DirectoryInfo dir && !link)
+        Exists,
+        Missing,
+        Unavailable,
+    }
+
+    [DllImport("kernel32.dll", EntryPoint = "GetFileAttributesW", CharSet = CharSet.Unicode, SetLastError = true)]
+    static extern uint GetFileAttributes(string path);
+
+    /// <summary>
+    /// Whether a path exists, is missing, or cannot be told (File.Exists answers "no" to all of a disk error,
+    /// an unplugged drive and access denied, which would make a failed delete look like a success).
+    /// </summary>
+    static (PathState State, string? Error) Probe(string path)
+    {
+        const uint Invalid = 0xFFFFFFFF;
+        const int FileNotFound = 2, PathNotFound = 3;
+        string full = path.StartsWith(@"\\", StringComparison.Ordinal) ? path : @"\\?\" + Path.GetFullPath(path);
+        if (GetFileAttributes(full) != Invalid) return (PathState.Exists, null);
+        int code = Marshal.GetLastPInvokeError();
+        if (code is FileNotFound or PathNotFound)
         {
-            IEnumerable<FileSystemInfo> entries;
+            // "Path not found" is also what a vanished drive says: check that the volume itself is still there.
+            string? root = Path.GetPathRoot(Path.GetFullPath(path));
+            if (root != null && GetFileAttributes(root.StartsWith(@"\\", StringComparison.Ordinal) ? root : @"\\?\" + root) == Invalid)
+                return (PathState.Unavailable, new System.ComponentModel.Win32Exception(Marshal.GetLastPInvokeError()).Message);
+            return (PathState.Missing, null);
+        }
+        return (PathState.Unavailable, new System.ComponentModel.Win32Exception(code).Message);
+    }
+
+    static bool IsFileSystemError(Exception ex) => ex is IOException or UnauthorizedAccessException or System.Security.SecurityException;
+
+    /// <summary>
+    /// Deletes a folder's contents bottom-up, then the folder. Iterative, so an extremely deep folder tree cannot
+    /// overflow the stack (which would end the process, as a stack overflow cannot be caught).
+    /// </summary>
+    static void DeleteTree(FileSystemInfo root, ref int failed, ref string? error, CancellationToken cancel)
+    {
+        var stack = new Stack<(FileSystemInfo Item, bool ContentsDone)>();
+        stack.Push((root, false));
+        while (stack.Count > 0)
+        {
+            cancel.ThrowIfCancellationRequested();
+            var (item, contentsDone) = stack.Pop();
+            FileAttributes attributes;
             try
             {
-                entries = dir.EnumerateFileSystemInfos().ToList();
+                attributes = item.Attributes;
             }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            catch (Exception ex) when (IsFileSystemError(ex))
             {
                 failed++;
                 error ??= ex.Message;
-                return;
+                continue;
             }
-            foreach (var entry in entries) DeleteTree(entry, ref failed, ref error, cancel);
-        }
-        try
-        {
-            if ((item.Attributes & FileAttributes.ReadOnly) != 0) item.Attributes &= ~FileAttributes.ReadOnly;
-            // For a junction or symlink this removes only the link itself.
-            if (item is DirectoryInfo d) d.Delete(recursive: false);
-            else item.Delete();
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            failed++;
-            error ??= ex.Message;
+            if ((int)attributes == -1) continue; // vanished meanwhile
+
+            bool link = (attributes & FileAttributes.ReparsePoint) != 0;
+            if (item is DirectoryInfo dir && !link && !contentsDone)
+            {
+                List<FileSystemInfo> entries;
+                try
+                {
+                    entries = dir.EnumerateFileSystemInfos().ToList();
+                }
+                catch (Exception ex) when (IsFileSystemError(ex))
+                {
+                    failed++;
+                    error ??= ex.Message;
+                    continue;
+                }
+                stack.Push((item, true)); // the folder itself, once its entries are done
+                foreach (var entry in entries) stack.Push((entry, false));
+                continue;
+            }
+
+            try
+            {
+                if ((attributes & FileAttributes.ReadOnly) != 0) item.Attributes = attributes & ~FileAttributes.ReadOnly;
+                // For a junction or symlink this removes only the link itself.
+                if (item is DirectoryInfo d) d.Delete(recursive: false);
+                else item.Delete();
+            }
+            catch (Exception ex) when (IsFileSystemError(ex))
+            {
+                failed++;
+                error ??= ex.Message;
+            }
         }
     }
 

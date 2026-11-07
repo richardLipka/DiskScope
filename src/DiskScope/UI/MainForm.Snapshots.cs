@@ -65,24 +65,23 @@ sealed partial class MainForm
         UpdateButtons();
         _status.Text = L.T("Saving");
         string file = _catalog.NewFilePath(session.RootPath, session.StartedUtc);
+        string? error = null;
         try
         {
             _saveTask = Task.Run(() => Snapshot.Save(session.Store, file, session.StartedUtc, session.Elapsed, session.Mode,
                 session.State == ScanState.Completed, session.Progress.Errors));
             await _saveTask;
-            UpdateStatus();
-            _status.Text += "  ·  " + L.T("Saved");
         }
         catch (Exception ex)
         {
-            UpdateStatus();
-            _status.Text += "  ·  " + L.T("SaveFailed", ex.Message);
+            error = ex.Message;
         }
-        finally
-        {
-            _saving = false;
-            UpdateButtons();
-        }
+        _saving = false;
+        // Closing the window waits for the save; by the time this continuation runs the window may be gone.
+        if (IsDisposed) return;
+        UpdateButtons();
+        UpdateStatus();
+        _status.Text += "  ·  " + (error == null ? L.T("Saved") : L.T("SaveFailed", error));
     }
 
     async void LoadSnapshot(SnapshotInfo info)
@@ -92,25 +91,29 @@ sealed partial class MainForm
         UpdateButtons();
         _status.Text = L.T("Loading", 0);
         var progress = new Progress<double>(p => _status.Text = L.T("Loading", (int)(p * 100)));
+        NodeStore? store = null;
+        string? error = null;
         try
         {
-            var store = await Task.Run(() => Snapshot.Load(info.FilePath, out _, ((IProgress<double>)progress).Report));
+            store = await Task.Run(() => Snapshot.Load(info.FilePath, out _, ((IProgress<double>)progress).Report));
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+        }
+        _loading = false;
+        if (IsDisposed) return; // closed while loading
+        if (store != null)
+        {
             _session = null;
             _loaded = info;
             SelectTarget(info.RootPath);
             ShowStore(store);
         }
-        catch (Exception ex)
-        {
-            MessageBox.Show(this, L.T("LoadFailed", ex.Message), Text, MessageBoxButtons.OK, MessageBoxIcon.Warning);
-        }
-        finally
-        {
-            _loading = false;
-            UpdateButtons();
-            UpdateStatus();
-            SnapshotLoaded?.Invoke();
-        }
+        else MessageBox.Show(this, L.T("LoadFailed", error ?? "?"), Text, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        UpdateButtons();
+        UpdateStatus();
+        SnapshotLoaded?.Invoke();
     }
 
     /// <summary>Raised after a saved scan has been opened; used by the test hooks.</summary>
