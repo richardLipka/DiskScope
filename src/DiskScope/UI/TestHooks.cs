@@ -21,6 +21,21 @@ static class TestHooks
         else form.ScanCompleted += capture;
     }
 
+    /// <summary>After the scan, compares with the previous saved scan (only grown items), captures, quits.</summary>
+    public static void CaptureCompare(MainForm form, string file, int expandLevels)
+    {
+        form.ScanCompleted += () => form.CompareWithPreviousForTest(onlyGrown: true);
+        form.CompareStarted += () =>
+        {
+            form.ExpandLargest(expandLevels);
+            After(800, () =>
+            {
+                Capture(form, file);
+                form.Close();
+            });
+        };
+    }
+
     /// <summary>Opens the data manager, captures it, and quits.</summary>
     public static void CaptureDataManager(MainForm form, string file)
     {

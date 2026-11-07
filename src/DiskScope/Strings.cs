@@ -120,6 +120,16 @@ static class L
                           "Saved scan from {0} ({1}) · {2} files · {3} folders · {4}"),
         ["Today"] = ("dnes", "today"),
         ["DaysAgo"] = ("před {0} dny", "{0} days ago"),
+        ["CompareWith"] = ("Porovnat se skenem", "Compare with scan"),
+        ["StopCompare"] = ("Ukončit porovnání", "Stop comparing"),
+        ["ShowAll"] = ("Zobrazit vše", "Show all"),
+        ["ShowGrown"] = ("Jen narostlé", "Only grown"),
+        ["ShowChanged"] = ("Jen změněné", "Only changed"),
+        ["FilterTip"] = ("Které položky ukazovat při porovnání", "Which items to show while comparing"),
+        ["ComparedWith"] = ("porovnáno se skenem z {0}: {1}", "compared with scan from {0}: {1}"),
+        ["NewItem"] = ("nové od minulého skenu", "new since the earlier scan"),
+        ["ChangeBy"] = ("změna {0}", "change {0}"),
+        ["RemovedSince"] = ("od minula smazáno {0} položek ({1})", "{0} items removed since ({1})"),
         ["ConfirmStopScan"] = ("Sken stále běží. Opravdu ho zastavit?", "A scan is still running. Stop it?"),
     };
 }

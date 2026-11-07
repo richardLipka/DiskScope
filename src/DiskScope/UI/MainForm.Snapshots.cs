@@ -47,6 +47,7 @@ sealed partial class MainForm
         var manage = new ToolStripMenuItem(L.T("ManageData"));
         manage.Click += (_, _) => ShowDataManager();
         _history.DropDownItems.Add(manage);
+        AddCompareItems();
     }
 
     internal void ShowDataManagerForTest() => ShowDataManager();

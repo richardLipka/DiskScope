@@ -118,7 +118,8 @@ sealed partial class MainForm : Form
             _language.DropDownItems.Add(item);
         }
         BuildHistory();
-        _toolbar.Items.AddRange([_target, _browse, new ToolStripSeparator(), _scan, _stop, new ToolStripSeparator(), _history,
+        BuildCompare();
+        _toolbar.Items.AddRange([_target, _browse, new ToolStripSeparator(), _scan, _stop, new ToolStripSeparator(), _history, _filter,
             new ToolStripSeparator(), _up, _language, _admin]);
         FillTargets();
     }
@@ -152,6 +153,7 @@ sealed partial class MainForm : Form
         _tree.UpdateSortIcon();
         ApplyMenuTexts();
         ApplyHistoryTexts();
+        ApplyCompareTexts();
         string? selected = SelectedTarget;
         FillTargets();
         if (selected != null) SelectTarget(selected);
@@ -230,6 +232,7 @@ sealed partial class MainForm : Form
     {
         _rows = new TreeRows(store);
         _tree.Rows = _rows;
+        ReattachCompare();
         _shownVersion = store.Version;
         UpdateBreadcrumb();
         UpdateStatus();
@@ -274,7 +277,7 @@ sealed partial class MainForm : Form
     {
         if (_session == null)
         {
-            _status.Text = _loaded != null && _rows != null ? LoadedStatusLine(_loaded) : L.T("Ready");
+            _status.Text = _loaded != null && _rows != null ? LoadedStatusLine(_loaded) + CompareStatus() : L.T("Ready");
             _progress.Visible = false;
             _mode.Text = _rows != null ? L.T("Memory", Format.Size(_rows.Store.MemoryUsage, L.Culture)) : "";
             return;
@@ -293,6 +296,7 @@ sealed partial class MainForm : Form
         _status.Text = L.T("StatusLine", state, Format.Count(root.FileCount, L.Culture), Format.Count(root.DirCount, L.Culture),
             Format.Size(root.Size, L.Culture), Format.Duration(_session.Elapsed), Format.Count(p.Errors, L.Culture));
         if (_session.State == ScanState.Running && p.CurrentPath is string cur) _status.Text += "  ·  " + cur;
+        _status.Text += CompareStatus();
         if (_session.MftError is Exception mftError) _status.Text += "  ·  " + L.T("MftFallback", mftError.Message);
         _progress.Visible = _session.State == ScanState.Running;
         if (p.TotalRecords > 0)
@@ -325,6 +329,7 @@ sealed partial class MainForm : Form
                 Format.Count(n.FileCount, L.Culture), Format.Count(n.DirCount, L.Culture))
             : L.T("DetailFile", s.GetPath(node), Format.Size(n.Size, L.Culture), Format.Size(n.Length, L.Culture),
                 n.MTime > 0 ? DateTime.FromFileTimeUtc(n.MTime).ToLocalTime().ToString("g", L.Culture) : "");
+        _detail.Text += CompareDetail(node);
     }
 
     // --- navigation ---
