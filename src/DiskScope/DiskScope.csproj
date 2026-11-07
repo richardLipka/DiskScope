@@ -1,0 +1,17 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>DiskScope.ico</ApplicationIcon>
+    <Product>DiskScope</Product>
+    <Description>Disk space analyzer and cleanup tool</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\DiskScope.Core\DiskScope.Core.csproj" />
+  </ItemGroup>
+
+</Project>
