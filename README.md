@@ -29,6 +29,11 @@ velikosti všech složek a umožní rychle najít, kde zabírají místo velké 
   velikosti a stáří, v celém stromu nebo jen v otevřené složce.
 - **Poslední změna a poslední přístup**: u souboru jeho vlastní, u složky nejnovější uvnitř. Hledání umí
   „nezměněno / neotevřeno rok“. Pozor: přístup mohou aktualizovat i antivirus, indexování nebo zálohování.
+- **Úklid**: katalog známých míst (dočasné soubory, mezipaměti prohlížečů a vývojových nástrojů, výpisy
+  pádů, AI modely, virtuální disky Dockeru a WSL, systémové soubory…). U každého místa ukáže, kolik zabírá, jak
+  bezpečné je ho smazat a jak místo uvolnit správně. Bezpečná místa lze vyprázdnit jedním kliknutím.
+  Katalog je soubor JSON: „Upravit katalog…“ vytvoří `data\cleanup-catalog.json`, kde lze položky měnit,
+  přidávat nebo vypínat (`"disabled": true`), bez nového sestavení aplikace.
 - **Kopírovat dotaz pro AI** (Ctrl+Shift+C): sestaví popis souboru nebo složky (velikost, data, největší
   položky, typy souborů) s otázkami, k čemu slouží a zda je bezpečné ji smazat. Vložíte ho do libovolného AI
   asistenta. Aplikace sama nic neodesílá.
@@ -89,6 +94,11 @@ of all folders and lets you quickly find where large files and folders take up s
   size and age, in the whole tree or only the open folder.
 - **Last modified and last accessed**: a file's own, a folder's newest inside. Search can find items
   "unchanged / not opened for a year". Note that antivirus, indexing or backup may update access times too.
+- **Cleanup**: a catalog of known places (temporary files, browser and developer tool caches, crash dumps,
+  AI models, Docker and WSL virtual disks, system files…). For each it shows the space taken, how safe it is
+  to delete and how to free the space properly. Safe places can be emptied with one click.
+  The catalog is a JSON file: "Edit catalog…" creates `data\cleanup-catalog.json`, where entries can be
+  changed, added or turned off (`"disabled": true`) without rebuilding the app.
 - **Copy question for AI** (Ctrl+Shift+C): describes a file or folder (size, dates, largest entries, file
   types) with questions on what it is for and whether it is safe to delete, ready to paste into any AI
   assistant. The app itself sends nothing.

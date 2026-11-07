@@ -1,0 +1,687 @@
+// DiskScope – catalog of known locations for disk cleanup.
+//
+// Edit a copy in the app's data folder (data\cleanup-catalog.json, via "Edit catalog" in the Cleanup panel):
+// entries there replace built-in ones with the same "id", "disabled": true removes one, new ids are added.
+//
+// Fields:
+//   id           unique name of the entry
+//   category     temp | browser | dev | app | system | user  (for grouping and future filters)
+//   safety       safe (cache, temporary) | caution (has a cost) | system (never delete by hand)
+//   action       deleteContents (empty the folder) | delete (delete the item) | none (advice only)
+//   paths        path patterns: %EnvironmentVariables%, {user} = every user profile folder, * ? wildcards
+//   folderNames  folder names matched anywhere in the tree (nested matches are skipped)
+//   minSize      report only matches at least this many bytes large
+//   name, description, howTo   texts per language code ("cs", "en"; English is the fallback)
+{
+  "version": 1,
+  "entries": [
+    {
+      "id": "user-temp",
+      "category": "temp",
+      "safety": "safe",
+      "action": "deleteContents",
+      "paths": [ "{user}\\AppData\\Local\\Temp" ],
+      "name": { "cs": "Dočasné soubory uživatele", "en": "User temporary files" },
+      "description": {
+        "cs": "Dočasné soubory, které si aplikace a instalátory odkládají při práci. Většina zůstává zapomenutá po skončení programu.",
+        "en": "Temporary files that applications and installers put aside while working. Most are left behind after the program ends."
+      },
+      "howTo": {
+        "cs": "Smazat obsah složky. Soubory, které jsou právě používané, Windows přeskočí. Případně Nastavení > Systém > Úložiště > Dočasné soubory.",
+        "en": "Delete the folder's contents. Files in use are skipped by Windows. Or Settings > System > Storage > Temporary files."
+      }
+    },
+    {
+      "id": "windows-temp",
+      "category": "temp",
+      "safety": "safe",
+      "action": "deleteContents",
+      "paths": [ "%SystemRoot%\\Temp" ],
+      "name": { "cs": "Dočasné soubory Windows", "en": "Windows temporary files" },
+      "description": {
+        "cs": "Systémové dočasné soubory služeb a instalací.",
+        "en": "System temporary files left by services and installations."
+      },
+      "howTo": {
+        "cs": "Smazat obsah složky (vyžaduje práva správce), nebo Vyčištění disku > Dočasné soubory.",
+        "en": "Delete the folder's contents (needs administrator rights), or Disk Cleanup > Temporary files."
+      }
+    },
+    {
+      "id": "crash-dumps",
+      "category": "temp",
+      "safety": "safe",
+      "action": "deleteContents",
+      "paths": [ "{user}\\AppData\\Local\\CrashDumps", "%SystemRoot%\\Minidump" ],
+      "name": { "cs": "Výpisy pádů aplikací", "en": "Application crash dumps" },
+      "description": {
+        "cs": "Výpisy paměti vytvořené při pádu aplikace nebo systému. Potřebuje je jen vývojář, který pád ladí.",
+        "en": "Memory dumps written when an application or the system crashed. Only needed by a developer debugging the crash."
+      },
+      "howTo": { "cs": "Smazat obsah složky.", "en": "Delete the folder's contents." }
+    },
+    {
+      "id": "memory-dump",
+      "category": "temp",
+      "safety": "safe",
+      "action": "delete",
+      "paths": [ "%SystemRoot%\\MEMORY.DMP" ],
+      "name": { "cs": "Úplný výpis paměti po modré obrazovce", "en": "Full memory dump after a blue screen" },
+      "description": {
+        "cs": "Výpis celé paměti z posledního pádu systému. Může mít desítky GB.",
+        "en": "A dump of the whole memory from the last system crash. Can be tens of GB."
+      },
+      "howTo": {
+        "cs": "Smazat, pokud pád nechcete analyzovat. Vytváření lze omezit: Systém > Upřesnit nastavení systému > Spuštění a zotavení.",
+        "en": "Delete unless you want to analyse the crash. Can be limited in System > Advanced system settings > Startup and Recovery."
+      }
+    },
+    {
+      "id": "windows-error-reports",
+      "category": "temp",
+      "safety": "safe",
+      "action": "deleteContents",
+      "paths": [
+        "%ProgramData%\\Microsoft\\Windows\\WER\\ReportArchive",
+        "%ProgramData%\\Microsoft\\Windows\\WER\\ReportQueue",
+        "{user}\\AppData\\Local\\Microsoft\\Windows\\WER"
+      ],
+      "name": { "cs": "Hlášení o chybách Windows", "en": "Windows Error Reporting files" },
+      "description": {
+        "cs": "Archiv a fronta hlášení o chybách aplikací pro Microsoft.",
+        "en": "Archived and queued application error reports for Microsoft."
+      },
+      "howTo": {
+        "cs": "Smazat obsah, nebo Vyčištění disku > Soubory hlášení chyb Windows.",
+        "en": "Delete the contents, or Disk Cleanup > Windows error reports."
+      }
+    },
+    {
+      "id": "windows-update-download",
+      "category": "system",
+      "safety": "caution",
+      "action": "none",
+      "paths": [ "%SystemRoot%\\SoftwareDistribution\\Download" ],
+      "name": { "cs": "Stažené aktualizace Windows", "en": "Downloaded Windows updates" },
+      "description": {
+        "cs": "Instalační balíčky Windows Update. Po instalaci aktualizací už nejsou potřeba, ale mazat je za běhu aktualizace se nemá.",
+        "en": "Windows Update installation packages. Not needed once updates are installed, but should not be deleted while an update runs."
+      },
+      "howTo": {
+        "cs": "Vyčištění disku > Vyčistit systémové soubory > Vyčištění služby Windows Update, nebo Nastavení > Úložiště > Dočasné soubory.",
+        "en": "Disk Cleanup > Clean up system files > Windows Update Cleanup, or Settings > Storage > Temporary files."
+      }
+    },
+    {
+      "id": "delivery-optimization",
+      "category": "system",
+      "safety": "caution",
+      "action": "none",
+      "paths": [ "%SystemRoot%\\ServiceProfiles\\NetworkService\\AppData\\Local\\Microsoft\\Windows\\DeliveryOptimization\\Cache" ],
+      "name": { "cs": "Mezipaměť optimalizace doručení", "en": "Delivery Optimization cache" },
+      "description": {
+        "cs": "Části aktualizací sdílené s dalšími počítači v síti.",
+        "en": "Pieces of updates shared with other computers on the network."
+      },
+      "howTo": {
+        "cs": "Vyčištění disku > Soubory optimalizace doručení. Sdílení lze vypnout v Nastavení > Windows Update > Rozšířené možnosti > Optimalizace doručení.",
+        "en": "Disk Cleanup > Delivery Optimization Files. Sharing can be turned off in Settings > Windows Update > Advanced options > Delivery Optimization."
+      }
+    },
+    {
+      "id": "windows-old",
+      "category": "system",
+      "safety": "caution",
+      "action": "none",
+      "paths": [ "%SystemDrive%\\Windows.old" ],
+      "name": { "cs": "Předchozí instalace Windows", "en": "Previous Windows installation" },
+      "description": {
+        "cs": "Zbytek systému před velkou aktualizací. Umožňuje návrat k předchozí verzi Windows (obvykle 10 dní).",
+        "en": "The system as it was before a major upgrade. Allows going back to the previous Windows version (usually for 10 days)."
+      },
+      "howTo": {
+        "cs": "Nastavení > Systém > Úložiště > Dočasné soubory > Předchozí instalace Windows. Ručně mazat nejde kvůli oprávněním.",
+        "en": "Settings > System > Storage > Temporary files > Previous Windows installation(s). Deleting by hand fails on permissions."
+      }
+    },
+    {
+      "id": "recycle-bin",
+      "category": "user",
+      "safety": "safe",
+      "action": "none",
+      "paths": [ "%SystemDrive%\\$Recycle.Bin" ],
+      "name": { "cs": "Koš", "en": "Recycle Bin" },
+      "description": {
+        "cs": "Smazané soubory čekající v koši. Místo se uvolní až po vysypání koše.",
+        "en": "Deleted files waiting in the Recycle Bin. The space is freed only when it is emptied."
+      },
+      "howTo": {
+        "cs": "Pravým tlačítkem na Koš na ploše > Vysypat koš. Nejdřív zkontrolujte, že tam není nic potřebného.",
+        "en": "Right-click the Recycle Bin on the desktop > Empty Recycle Bin. Check first that nothing needed is in it."
+      }
+    },
+    {
+      "id": "thumbnail-cache",
+      "category": "temp",
+      "safety": "safe",
+      "action": "none",
+      "paths": [ "{user}\\AppData\\Local\\Microsoft\\Windows\\Explorer" ],
+      "minSize": 104857600,
+      "name": { "cs": "Mezipaměť miniatur Průzkumníka", "en": "Explorer thumbnail cache" },
+      "description": {
+        "cs": "Náhledy obrázků a videí. Průzkumník je má otevřené, proto je nelze smazat přímo.",
+        "en": "Previews of pictures and videos. Explorer keeps them open, so they cannot be deleted directly."
+      },
+      "howTo": { "cs": "Vyčištění disku > Miniatury.", "en": "Disk Cleanup > Thumbnails." }
+    },
+    {
+      "id": "chrome-cache",
+      "category": "browser",
+      "safety": "safe",
+      "action": "deleteContents",
+      "paths": [
+        "{user}\\AppData\\Local\\Google\\Chrome\\User Data\\*\\Cache",
+        "{user}\\AppData\\Local\\Google\\Chrome\\User Data\\*\\Code Cache",
+        "{user}\\AppData\\Local\\Google\\Chrome\\User Data\\*\\Service Worker\\CacheStorage"
+      ],
+      "name": { "cs": "Mezipaměť Google Chrome", "en": "Google Chrome cache" },
+      "description": {
+        "cs": "Uložené části webových stránek pro rychlejší načítání. Hesla, záložky ani historie v nich nejsou.",
+        "en": "Stored parts of web pages for faster loading. No passwords, bookmarks or history are in it."
+      },
+      "howTo": {
+        "cs": "V Chrome: Nastavení > Ochrana soukromí > Vymazat údaje o prohlížení > Obrázky a soubory v mezipaměti. Nebo smazat obsah při zavřeném prohlížeči.",
+        "en": "In Chrome: Settings > Privacy > Clear browsing data > Cached images and files. Or delete the contents with the browser closed."
+      }
+    },
+    {
+      "id": "edge-cache",
+      "category": "browser",
+      "safety": "safe",
+      "action": "deleteContents",
+      "paths": [
+        "{user}\\AppData\\Local\\Microsoft\\Edge\\User Data\\*\\Cache",
+        "{user}\\AppData\\Local\\Microsoft\\Edge\\User Data\\*\\Code Cache",
+        "{user}\\AppData\\Local\\Microsoft\\Edge\\User Data\\*\\Service Worker\\CacheStorage"
+      ],
+      "name": { "cs": "Mezipaměť Microsoft Edge", "en": "Microsoft Edge cache" },
+      "description": {
+        "cs": "Uložené části webových stránek pro rychlejší načítání.",
+        "en": "Stored parts of web pages for faster loading."
+      },
+      "howTo": {
+        "cs": "V Edge: Nastavení > Soukromí > Vymazat data procházení > Obrázky a soubory v mezipaměti.",
+        "en": "In Edge: Settings > Privacy > Clear browsing data > Cached images and files."
+      }
+    },
+    {
+      "id": "firefox-cache",
+      "category": "browser",
+      "safety": "safe",
+      "action": "deleteContents",
+      "paths": [ "{user}\\AppData\\Local\\Mozilla\\Firefox\\Profiles\\*\\cache2" ],
+      "name": { "cs": "Mezipaměť Firefoxu", "en": "Firefox cache" },
+      "description": {
+        "cs": "Uložené části webových stránek pro rychlejší načítání.",
+        "en": "Stored parts of web pages for faster loading."
+      },
+      "howTo": {
+        "cs": "Ve Firefoxu: Nastavení > Soukromí a zabezpečení > Cookies a data stránek > Vymazat data > Mezipaměť webového obsahu.",
+        "en": "In Firefox: Settings > Privacy & Security > Cookies and Site Data > Clear Data > Cached Web Content."
+      }
+    },
+    {
+      "id": "chrome-ai-model",
+      "category": "browser",
+      "safety": "caution",
+      "action": "none",
+      "paths": [
+        "{user}\\AppData\\Local\\Google\\Chrome\\User Data\\OptGuideOnDeviceModel",
+        "{user}\\AppData\\Local\\Microsoft\\Edge\\User Data\\EdgeLLMOnDeviceModel"
+      ],
+      "name": { "cs": "AI model prohlížeče v počítači", "en": "Browser's on-device AI model" },
+      "description": {
+        "cs": "Jazykový model (např. Gemini Nano), který si prohlížeč stáhl pro funkce umělé inteligence. Má jednotky GB.",
+        "en": "A language model (e.g. Gemini Nano) the browser downloaded for AI features. Several GB."
+      },
+      "howTo": {
+        "cs": "Po smazání si ho prohlížeč stáhne znovu. Trvale: vypnout AI funkce v nastavení prohlížeče (Chrome: Nastavení > Systém > model AI v zařízení, případně chrome://flags), pak složku smazat.",
+        "en": "If deleted, the browser downloads it again. For good: turn off the AI features in the browser settings (Chrome: Settings > System > On-device AI, or chrome://flags), then delete the folder."
+      }
+    },
+    {
+      "id": "npm-cache",
+      "category": "dev",
+      "safety": "safe",
+      "action": "deleteContents",
+      "paths": [ "{user}\\AppData\\Local\\npm-cache", "{user}\\AppData\\Roaming\\npm-cache" ],
+      "name": { "cs": "Mezipaměť npm", "en": "npm cache" },
+      "description": {
+        "cs": "Stažené balíčky Node.js. Při další instalaci se stáhnou znovu.",
+        "en": "Downloaded Node.js packages. They are downloaded again on the next install."
+      },
+      "howTo": { "cs": "Příkaz: npm cache clean --force", "en": "Command: npm cache clean --force" }
+    },
+    {
+      "id": "yarn-cache",
+      "category": "dev",
+      "safety": "safe",
+      "action": "deleteContents",
+      "paths": [ "{user}\\AppData\\Local\\Yarn\\Cache", "{user}\\AppData\\Local\\Yarn\\Berry\\cache" ],
+      "name": { "cs": "Mezipaměť Yarn", "en": "Yarn cache" },
+      "description": { "cs": "Stažené balíčky Node.js pro Yarn.", "en": "Downloaded Node.js packages for Yarn." },
+      "howTo": { "cs": "Příkaz: yarn cache clean", "en": "Command: yarn cache clean" }
+    },
+    {
+      "id": "pnpm-store",
+      "category": "dev",
+      "safety": "caution",
+      "action": "none",
+      "paths": [ "{user}\\AppData\\Local\\pnpm\\store", "{user}\\AppData\\Local\\pnpm-store" ],
+      "name": { "cs": "Úložiště balíčků pnpm", "en": "pnpm package store" },
+      "description": {
+        "cs": "Sdílené úložiště balíčků; projekty na něj odkazují pevnými odkazy.",
+        "en": "Shared package store; projects link to it with hard links."
+      },
+      "howTo": {
+        "cs": "Příkaz: pnpm store prune (odstraní jen nepoužívané balíčky).",
+        "en": "Command: pnpm store prune (removes only unused packages)."
+      }
+    },
+    {
+      "id": "pip-cache",
+      "category": "dev",
+      "safety": "safe",
+      "action": "deleteContents",
+      "paths": [
+        "{user}\\AppData\\Local\\pip\\cache",
+        "{user}\\AppData\\Local\\Packages\\PythonSoftwareFoundation.Python.*\\LocalCache\\Local\\pip\\cache"
+      ],
+      "name": { "cs": "Mezipaměť pip (Python)", "en": "pip cache (Python)" },
+      "description": {
+        "cs": "Stažené balíčky Pythonu. Nainstalované balíčky zůstanou funkční.",
+        "en": "Downloaded Python packages. Installed packages keep working."
+      },
+      "howTo": { "cs": "Příkaz: pip cache purge", "en": "Command: pip cache purge" }
+    },
+    {
+      "id": "uv-cache",
+      "category": "dev",
+      "safety": "safe",
+      "action": "deleteContents",
+      "paths": [ "{user}\\AppData\\Local\\uv\\cache" ],
+      "name": { "cs": "Mezipaměť uv (Python)", "en": "uv cache (Python)" },
+      "description": { "cs": "Stažené balíčky a sestavení správce uv.", "en": "Packages and builds downloaded by the uv manager." },
+      "howTo": { "cs": "Příkaz: uv cache clean", "en": "Command: uv cache clean" }
+    },
+    {
+      "id": "nuget-packages",
+      "category": "dev",
+      "safety": "caution",
+      "action": "deleteContents",
+      "paths": [ "{user}\\.nuget\\packages" ],
+      "name": { "cs": "Balíčky NuGet (.NET)", "en": "NuGet packages (.NET)" },
+      "description": {
+        "cs": "Globální složka balíčků .NET. Při dalším sestavení projektů se balíčky stáhnou znovu.",
+        "en": "Global .NET package folder. Packages are downloaded again on the next build."
+      },
+      "howTo": { "cs": "Příkaz: dotnet nuget locals all --clear", "en": "Command: dotnet nuget locals all --clear" }
+    },
+    {
+      "id": "nuget-http-cache",
+      "category": "dev",
+      "safety": "safe",
+      "action": "deleteContents",
+      "paths": [ "{user}\\AppData\\Local\\NuGet\\v3-cache", "{user}\\AppData\\Local\\NuGet\\plugins-cache" ],
+      "name": { "cs": "Mezipaměť stahování NuGet", "en": "NuGet download cache" },
+      "description": { "cs": "Mezipaměť dotazů a stažených souborů NuGet.", "en": "Cache of NuGet queries and downloads." },
+      "howTo": { "cs": "Příkaz: dotnet nuget locals http-cache --clear", "en": "Command: dotnet nuget locals http-cache --clear" }
+    },
+    {
+      "id": "gradle-caches",
+      "category": "dev",
+      "safety": "caution",
+      "action": "deleteContents",
+      "paths": [ "{user}\\.gradle\\caches", "{user}\\.gradle\\wrapper\\dists" ],
+      "name": { "cs": "Mezipaměť Gradle", "en": "Gradle caches" },
+      "description": {
+        "cs": "Stažené závislosti a distribuce Gradle. Po smazání je první sestavení pomalejší.",
+        "en": "Downloaded dependencies and Gradle distributions. The first build after deleting is slower."
+      },
+      "howTo": {
+        "cs": "Smazat obsah při zavřeném IDE a zastaveném démonu (gradle --stop).",
+        "en": "Delete the contents with the IDE closed and the daemon stopped (gradle --stop)."
+      }
+    },
+    {
+      "id": "maven-repository",
+      "category": "dev",
+      "safety": "caution",
+      "action": "deleteContents",
+      "paths": [ "{user}\\.m2\\repository" ],
+      "name": { "cs": "Lokální repozitář Maven", "en": "Maven local repository" },
+      "description": {
+        "cs": "Stažené knihovny Javy. Při dalším sestavení se stáhnou znovu; ručně nainstalované artefakty (mvn install) se ztratí.",
+        "en": "Downloaded Java libraries. Downloaded again on the next build; artifacts installed by hand (mvn install) are lost."
+      },
+      "howTo": {
+        "cs": "Smazat obsah, nebo cíleně: mvn dependency:purge-local-repository.",
+        "en": "Delete the contents, or selectively: mvn dependency:purge-local-repository."
+      }
+    },
+    {
+      "id": "huggingface-cache",
+      "category": "dev",
+      "safety": "caution",
+      "action": "none",
+      "paths": [ "{user}\\.cache\\huggingface" ],
+      "name": { "cs": "Stažené AI modely (Hugging Face)", "en": "Downloaded AI models (Hugging Face)" },
+      "description": {
+        "cs": "Modely a datové sady stažené knihovnami transformers, diffusers apod. Často desítky GB.",
+        "en": "Models and datasets downloaded by transformers, diffusers and similar libraries. Often tens of GB."
+      },
+      "howTo": {
+        "cs": "Příkaz: huggingface-cli delete-cache (vyberete, které modely smazat). Smazané modely se při použití stáhnou znovu.",
+        "en": "Command: huggingface-cli delete-cache (choose which models to delete). Deleted models are downloaded again when used."
+      }
+    },
+    {
+      "id": "torch-cache",
+      "category": "dev",
+      "safety": "caution",
+      "action": "deleteContents",
+      "paths": [ "{user}\\.cache\\torch" ],
+      "name": { "cs": "Stažené modely PyTorch", "en": "Downloaded PyTorch models" },
+      "description": { "cs": "Modely stažené přes torch.hub.", "en": "Models downloaded through torch.hub." },
+      "howTo": { "cs": "Smazat obsah; při dalším použití se modely stáhnou znovu.", "en": "Delete the contents; models are downloaded again when used." }
+    },
+    {
+      "id": "python-bytecode",
+      "category": "dev",
+      "safety": "safe",
+      "action": "delete",
+      "folderNames": [ "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache" ],
+      "minSize": 10485760,
+      "name": { "cs": "Mezipaměti Pythonu v projektech", "en": "Python caches in projects" },
+      "description": {
+        "cs": "Přeložený bytecode a mezipaměti testovacích nástrojů. Vytvoří se znovu automaticky.",
+        "en": "Compiled bytecode and test tool caches. Recreated automatically."
+      },
+      "howTo": { "cs": "Smazat složku.", "en": "Delete the folder." }
+    },
+    {
+      "id": "node-modules",
+      "category": "dev",
+      "safety": "caution",
+      "action": "delete",
+      "folderNames": [ "node_modules" ],
+      "minSize": 52428800,
+      "name": { "cs": "Závislosti Node.js v projektech (node_modules)", "en": "Node.js project dependencies (node_modules)" },
+      "description": {
+        "cs": "Nainstalované balíčky projektu. U projektů, na kterých nepracujete, je škoda místa.",
+        "en": "A project's installed packages. A waste of space for projects you are not working on."
+      },
+      "howTo": {
+        "cs": "Smazat složku; když se k projektu vrátíte, obnovíte ji příkazem npm install (nebo yarn / pnpm install).",
+        "en": "Delete the folder; when you return to the project, restore it with npm install (or yarn / pnpm install)."
+      }
+    },
+    {
+      "id": "vscode-cache",
+      "category": "dev",
+      "safety": "safe",
+      "action": "deleteContents",
+      "paths": [
+        "{user}\\AppData\\Roaming\\Code\\Cache",
+        "{user}\\AppData\\Roaming\\Code\\CachedData",
+        "{user}\\AppData\\Roaming\\Code\\CachedExtensionVSIXs",
+        "{user}\\AppData\\Roaming\\Code\\logs"
+      ],
+      "name": { "cs": "Mezipaměť a logy VS Code", "en": "VS Code cache and logs" },
+      "description": {
+        "cs": "Mezipaměť editoru, staré verze a stažené balíčky rozšíření, logy.",
+        "en": "Editor cache, old versions and downloaded extension packages, logs."
+      },
+      "howTo": { "cs": "Smazat obsah při zavřeném VS Code.", "en": "Delete the contents with VS Code closed." }
+    },
+    {
+      "id": "jetbrains-caches",
+      "category": "dev",
+      "safety": "caution",
+      "action": "none",
+      "paths": [ "{user}\\AppData\\Local\\JetBrains" ],
+      "minSize": 524288000,
+      "name": { "cs": "Mezipaměti IDE JetBrains", "en": "JetBrains IDE caches" },
+      "description": {
+        "cs": "Indexy a logy IDE (IntelliJ, PyCharm, WebStorm…), často i ze starých verzí, které už nepoužíváte.",
+        "en": "IDE indexes and logs (IntelliJ, PyCharm, WebStorm…), often including old versions you no longer use."
+      },
+      "howTo": {
+        "cs": "Podsložky starých verzí (např. IntelliJIdea2022.3) lze smazat. V IDE: File > Invalidate Caches. Toolbox App umí staré verze odstranit sama.",
+        "en": "Subfolders of old versions (e.g. IntelliJIdea2022.3) can be deleted. In the IDE: File > Invalidate Caches. The Toolbox App can remove old versions itself."
+      }
+    },
+    {
+      "id": "docker-disk",
+      "category": "app",
+      "safety": "system",
+      "action": "none",
+      "paths": [ "{user}\\AppData\\Local\\Docker\\wsl" ],
+      "name": { "cs": "Virtuální disk Docker Desktop", "en": "Docker Desktop virtual disk" },
+      "description": {
+        "cs": "Obrazy, kontejnery a svazky Dockeru v jednom virtuálním disku. Po smazání dat uvnitř se soubor sám nezmenší.",
+        "en": "Docker images, containers and volumes in one virtual disk. The file does not shrink by itself when data inside is deleted."
+      },
+      "howTo": {
+        "cs": "Nemazat ručně. docker system prune -a (a docker volume prune), pak Docker Desktop > Troubleshoot > Clean / Purge data, případně zmenšit disk (Optimize-VHD nebo diskpart compact vdisk).",
+        "en": "Do not delete by hand. docker system prune -a (and docker volume prune), then Docker Desktop > Troubleshoot > Clean / Purge data, or compact the disk (Optimize-VHD or diskpart compact vdisk)."
+      }
+    },
+    {
+      "id": "wsl-distro-disk",
+      "category": "app",
+      "safety": "system",
+      "action": "none",
+      "paths": [ "{user}\\AppData\\Local\\Packages\\CanonicalGroupLimited.*\\LocalState", "{user}\\AppData\\Local\\Packages\\*Linux*\\LocalState" ],
+      "minSize": 524288000,
+      "name": { "cs": "Disk linuxové distribuce WSL", "en": "WSL Linux distribution disk" },
+      "description": {
+        "cs": "Celý systém linuxové distribuce (ext4.vhdx) včetně souborů v ní.",
+        "en": "The whole Linux distribution (ext4.vhdx), including the files in it."
+      },
+      "howTo": {
+        "cs": "Nemazat ručně. Nepotřebnou distribuci odstraňte příkazem wsl --unregister <název>. Uvnitř uklidit a disk zmenšit: wsl --manage <název> --set-sparse true, nebo Optimize-VHD.",
+        "en": "Do not delete by hand. Remove an unneeded distribution with wsl --unregister <name>. Clean up inside and shrink the disk: wsl --manage <name> --set-sparse true, or Optimize-VHD."
+      }
+    },
+    {
+      "id": "google-drive-cache",
+      "category": "app",
+      "safety": "caution",
+      "action": "none",
+      "paths": [ "{user}\\AppData\\Local\\Google\\DriveFS\\*\\content_cache" ],
+      "name": { "cs": "Mezipaměť Disku Google", "en": "Google Drive cache" },
+      "description": {
+        "cs": "Kopie souborů z Disku Google uložené v počítači (otevřené nebo označené k použití offline).",
+        "en": "Copies of Google Drive files kept on this computer (opened ones or those marked for offline use)."
+      },
+      "howTo": {
+        "cs": "Nemazat za běhu aplikace. V Disku Google: Nastavení > Předvolby > zrušit dostupnost offline / vyčistit mezipaměť, nebo přesunout mezipaměť na jiný disk.",
+        "en": "Do not delete while the app runs. In Google Drive: Settings > Preferences > remove offline access / clear cache, or move the cache to another drive."
+      }
+    },
+    {
+      "id": "onedrive-files",
+      "category": "app",
+      "safety": "caution",
+      "action": "none",
+      "paths": [ "{user}\\OneDrive", "{user}\\OneDrive - *" ],
+      "minSize": 1073741824,
+      "name": { "cs": "Soubory OneDrive v počítači", "en": "OneDrive files on this computer" },
+      "description": {
+        "cs": "Smazáním souboru zde ho smažete i z cloudu a ze všech zařízení.",
+        "en": "Deleting a file here deletes it from the cloud and all devices too."
+      },
+      "howTo": {
+        "cs": "Místo mazání: pravým tlačítkem > Uvolnit místo (soubor zůstane v cloudu). Automaticky: OneDrive > Nastavení > Soubory na vyžádání.",
+        "en": "Instead of deleting: right-click > Free up space (the file stays in the cloud). Automatically: OneDrive > Settings > Files On-Demand."
+      }
+    },
+    {
+      "id": "teams-cache",
+      "category": "app",
+      "safety": "caution",
+      "action": "none",
+      "paths": [ "{user}\\AppData\\Local\\Packages\\MSTeams_8wekyb3d8bbwe\\LocalCache\\Microsoft\\MSTeams" ],
+      "minSize": 209715200,
+      "name": { "cs": "Mezipaměť Microsoft Teams", "en": "Microsoft Teams cache" },
+      "description": { "cs": "Mezipaměť nového klienta Teams.", "en": "Cache of the new Teams client." },
+      "howTo": {
+        "cs": "Nastavení > Aplikace > Microsoft Teams > Upřesňující možnosti > Resetovat (smaže i přihlášení).",
+        "en": "Settings > Apps > Microsoft Teams > Advanced options > Reset (also signs you out)."
+      }
+    },
+    {
+      "id": "nvidia-caches",
+      "category": "app",
+      "safety": "safe",
+      "action": "deleteContents",
+      "paths": [
+        "{user}\\AppData\\Local\\NVIDIA\\DXCache",
+        "{user}\\AppData\\Local\\NVIDIA\\GLCache",
+        "{user}\\AppData\\LocalLow\\NVIDIA\\PerDriverVersion\\DXCache",
+        "%ProgramData%\\NVIDIA Corporation\\Downloader"
+      ],
+      "name": { "cs": "Mezipaměti shaderů a instalátory NVIDIA", "en": "NVIDIA shader caches and installers" },
+      "description": {
+        "cs": "Přeložené shadery her (vytvoří se znovu, hry se poprvé načtou pomaleji) a stažené instalátory ovladačů.",
+        "en": "Compiled game shaders (recreated; games load slower the first time) and downloaded driver installers."
+      },
+      "howTo": { "cs": "Smazat obsah, nebo Vyčištění disku > Mezipaměť shaderů DirectX.", "en": "Delete the contents, or Disk Cleanup > DirectX Shader Cache." }
+    },
+    {
+      "id": "steam-shadercache",
+      "category": "app",
+      "safety": "safe",
+      "action": "deleteContents",
+      "paths": [ "%ProgramFiles(x86)%\\Steam\\steamapps\\shadercache" ],
+      "name": { "cs": "Mezipaměť shaderů Steam", "en": "Steam shader cache" },
+      "description": { "cs": "Předpřipravené shadery her ze Steamu.", "en": "Pre-compiled game shaders from Steam." },
+      "howTo": { "cs": "Smazat obsah; Steam je případně stáhne znovu.", "en": "Delete the contents; Steam downloads them again if needed." }
+    },
+    {
+      "id": "ckan-downloads",
+      "category": "app",
+      "safety": "safe",
+      "action": "deleteContents",
+      "paths": [ "{user}\\AppData\\Local\\CKAN\\downloads" ],
+      "name": { "cs": "Stažené módy CKAN (Kerbal Space Program)", "en": "CKAN downloaded mods (Kerbal Space Program)" },
+      "description": { "cs": "Archivy módů stažené správcem CKAN; nainstalované módy zůstanou.", "en": "Mod archives downloaded by CKAN; installed mods stay." },
+      "howTo": { "cs": "V CKAN: Nastavení > Vyčistit mezipaměť, nebo smazat obsah.", "en": "In CKAN: Settings > Clear cache, or delete the contents." }
+    },
+    {
+      "id": "adobe-media-cache",
+      "category": "app",
+      "safety": "safe",
+      "action": "deleteContents",
+      "paths": [ "{user}\\AppData\\Roaming\\Adobe\\Common\\Media Cache Files", "{user}\\AppData\\Roaming\\Adobe\\Common\\Media Cache" ],
+      "name": { "cs": "Mezipaměť médií Adobe", "en": "Adobe media cache" },
+      "description": { "cs": "Mezipaměť Premiere, After Effects a dalších aplikací Adobe.", "en": "Cache of Premiere, After Effects and other Adobe apps." },
+      "howTo": { "cs": "V aplikaci: Předvolby > Mezipaměť médií > Odstranit.", "en": "In the app: Preferences > Media Cache > Delete." }
+    },
+    {
+      "id": "downloads",
+      "category": "user",
+      "safety": "caution",
+      "action": "none",
+      "paths": [ "{user}\\Downloads" ],
+      "minSize": 1073741824,
+      "name": { "cs": "Stažené soubory", "en": "Downloads" },
+      "description": {
+        "cs": "Často obsahuje staré instalátory (.exe, .msi), archivy a obrazy disků, které už nejsou potřeba.",
+        "en": "Often holds old installers (.exe, .msi), archives and disk images that are no longer needed."
+      },
+      "howTo": {
+        "cs": "Projděte v Hledání s filtrem jména *.exe; *.msi; *.iso; *.zip a stářím „Neotevřeno půl roku“ v této složce.",
+        "en": "Review with Search: name *.exe; *.msi; *.iso; *.zip and age \"Not opened for 6 months\" in this folder."
+      }
+    },
+    {
+      "id": "system-volume-information",
+      "category": "system",
+      "safety": "system",
+      "action": "none",
+      "paths": [ "%SystemDrive%\\System Volume Information" ],
+      "name": { "cs": "Body obnovení a stínové kopie", "en": "Restore points and shadow copies" },
+      "description": {
+        "cs": "Body obnovení systému a stínové kopie souborů. Ručně se mazat nedají.",
+        "en": "System restore points and shadow copies of files. They cannot be deleted by hand."
+      },
+      "howTo": {
+        "cs": "Ochrana systému (sysdm.cpl > Ochrana systému > Konfigurovat): snížit maximální využití nebo odstranit body obnovení. Vyčištění disku > Další možnosti > Obnovení systému a stínové kopie.",
+        "en": "System Protection (sysdm.cpl > System Protection > Configure): lower the maximum usage or delete restore points. Disk Cleanup > More Options > System Restore and Shadow Copies."
+      }
+    },
+    {
+      "id": "hibernation-file",
+      "category": "system",
+      "safety": "system",
+      "action": "none",
+      "paths": [ "%SystemDrive%\\hiberfil.sys" ],
+      "name": { "cs": "Soubor hibernace", "en": "Hibernation file" },
+      "description": {
+        "cs": "Uložený obsah paměti pro hibernaci a rychlé spuštění.",
+        "en": "Saved memory contents for hibernation and Fast Startup."
+      },
+      "howTo": {
+        "cs": "Pokud hibernaci nepoužíváte: příkaz powercfg /h off (jako správce). Vypne i rychlé spuštění.",
+        "en": "If you do not use hibernation: powercfg /h off (as administrator). Also turns off Fast Startup."
+      }
+    },
+    {
+      "id": "page-file",
+      "category": "system",
+      "safety": "system",
+      "action": "none",
+      "paths": [ "%SystemDrive%\\pagefile.sys", "%SystemDrive%\\swapfile.sys" ],
+      "name": { "cs": "Stránkovací soubor", "en": "Page file" },
+      "description": { "cs": "Virtuální paměť Windows.", "en": "Windows virtual memory." },
+      "howTo": {
+        "cs": "Nemazat. Velikost lze nastavit: Systém > Upřesnit nastavení systému > Výkon > Upřesnit > Virtuální paměť.",
+        "en": "Do not delete. The size can be set in System > Advanced system settings > Performance > Advanced > Virtual memory."
+      }
+    },
+    {
+      "id": "winsxs",
+      "category": "system",
+      "safety": "system",
+      "action": "none",
+      "paths": [ "%SystemRoot%\\WinSxS" ],
+      "name": { "cs": "Úložiště součástí Windows (WinSxS)", "en": "Windows component store (WinSxS)" },
+      "description": {
+        "cs": "Součásti systému a jejich starší verze. Většina souborů je pevnými odkazy sdílená se složkou Windows, skutečná velikost je menší, než se zdá.",
+        "en": "System components and their older versions. Most files are hard links shared with the Windows folder, so the real size is smaller than it looks."
+      },
+      "howTo": {
+        "cs": "Nikdy nemazat ručně. Jako správce: Dism /Online /Cleanup-Image /StartComponentCleanup",
+        "en": "Never delete by hand. As administrator: Dism /Online /Cleanup-Image /StartComponentCleanup"
+      }
+    },
+    {
+      "id": "windows-installer-cache",
+      "category": "system",
+      "safety": "system",
+      "action": "none",
+      "paths": [ "%SystemRoot%\\Installer", "%ProgramData%\\Package Cache" ],
+      "name": { "cs": "Mezipaměť instalátorů", "en": "Installer cache" },
+      "description": {
+        "cs": "Instalační balíčky potřebné k odinstalaci, opravě a aktualizaci programů.",
+        "en": "Installation packages needed to uninstall, repair and update programs."
+      },
+      "howTo": {
+        "cs": "Nemazat – programy by pak nešly odinstalovat ani aktualizovat. Místo uvolníte odinstalací nepotřebných programů.",
+        "en": "Do not delete – programs could no longer be uninstalled or updated. Free the space by uninstalling unneeded programs."
+      }
+    }
+  ]
+}

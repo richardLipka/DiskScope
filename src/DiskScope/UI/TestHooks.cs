@@ -49,6 +49,19 @@ static class TestHooks
         });
     }
 
+    /// <summary>When the tree is ready, opens the cleanup panel, captures it with the first item selected, quits.</summary>
+    public static void CaptureCleanup(MainForm form, string file)
+    {
+        Action open = () => form.ShowCleanupForTest();
+        form.ScanCompleted += open;
+        form.SnapshotLoaded += open;
+        form.CleanupPanelForTest.CleanupFound += () => After(800, () =>
+        {
+            Capture(form, file);
+            form.Close();
+        });
+    }
+
     /// <summary>When the tree is ready, writes the AI question for one path to a file and quits.</summary>
     public static void WriteAiPrompt(MainForm form, string path, string file)
     {

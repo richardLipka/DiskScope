@@ -13,6 +13,7 @@ static class Program
     ///   --scan folder --compare-test file.png               compares with the previous saved scan, captures
     ///   --search-test file.png                              opens the search panel (largest files), captures
     ///   --ai-prompt path --out file.txt                     writes the AI question for a path
+    ///   --cleanup-test file.png                             opens the cleanup panel, captures
     ///   --delete-test report.txt                            deletes test items and writes a report
     /// </summary>
     [STAThread]
@@ -36,6 +37,8 @@ static class Program
             TestHooks.CaptureCompare(form, cmpShot, int.TryParse(Arg("--expand"), out int cmpLevels) ? cmpLevels : 0);
         if (Arg("--search-test") is string searchShot)
             TestHooks.CaptureSearch(form, searchShot);
+        if (Arg("--cleanup-test") is string cleanupShot)
+            TestHooks.CaptureCleanup(form, cleanupShot);
         if (Arg("--ai-prompt") is string aiPath && Arg("--out") is string aiOut)
             TestHooks.WriteAiPrompt(form, aiPath, aiOut);
         if (Arg("--data-manager") is string dmShot)

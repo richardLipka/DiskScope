@@ -4,4 +4,8 @@
     <InternalsVisibleTo Include="DiskScope.Tests" />
   </ItemGroup>
 
+  <ItemGroup>
+    <EmbeddedResource Include="Cleanup\cleanup-catalog.json" LogicalName="DiskScope.Core.Cleanup.cleanup-catalog.json" />
+  </ItemGroup>
+
 </Project>
