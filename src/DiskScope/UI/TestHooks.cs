@@ -49,6 +49,21 @@ static class TestHooks
         });
     }
 
+    /// <summary>After the scan: pauses the queue, queues every top-level item, captures the queue panel, cancels, quits.</summary>
+    public static void CaptureQueue(MainForm form, string file)
+    {
+        form.ScanCompleted += () =>
+        {
+            form.QueueAllPausedForTest();
+            After(800, () =>
+            {
+                Capture(form, file);
+                form.CancelQueueForTest();
+                form.Close();
+            });
+        };
+    }
+
     /// <summary>When the tree is ready, opens the cleanup panel, captures it with the first item selected, quits.</summary>
     public static void CaptureCleanup(MainForm form, string file)
     {

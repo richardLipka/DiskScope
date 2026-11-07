@@ -18,6 +18,8 @@ public enum NodeFlags : ushort
     Deleted = 32,
     /// <summary>A further name (hard link) of a file listed elsewhere; its size is counted there.</summary>
     HardLink = 64,
+    /// <summary>Waiting in the delete queue.</summary>
+    Queued = 128,
 }
 
 /// <summary>
@@ -186,6 +188,17 @@ public sealed class NodeStore
         {
             old = Volatile.Read(ref f);
             upd = (ushort)(old | (ushort)flag);
+        } while (Interlocked.CompareExchange(ref f, upd, old) != old);
+    }
+
+    public void ClearFlag(int index, NodeFlags flag)
+    {
+        ref ushort f = ref Unsafe(ref this[index].Flags);
+        ushort old, upd;
+        do
+        {
+            old = Volatile.Read(ref f);
+            upd = (ushort)(old & ~(ushort)flag);
         } while (Interlocked.CompareExchange(ref f, upd, old) != old);
     }
 

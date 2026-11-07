@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using DiskScope.Core;
+using DiskScope.Core.Deletion;
 using DiskScope.Core.Native;
 using DiskScope.Core.Scanning;
 
@@ -34,6 +35,8 @@ sealed partial class MainForm : Form
     public MainForm(AppSettings settings, string? startPath, bool autoScan)
     {
         _settings = settings;
+        _queue = new DeleteQueue(_deleter);
+        _queuePanel = new DeleteQueuePanel(_queue);
         Font = SystemFonts.MessageBoxFont!;
         AutoScaleMode = AutoScaleMode.Dpi;
         Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
@@ -49,10 +52,12 @@ sealed partial class MainForm : Form
         BuildMenu();
         _detail.Height = LogicalToDeviceUnits(26);
         _detail.BackColor = SystemColors.Window;
-        _statusBar.Items.AddRange([_status, _progress, _mode]);
+        _statusBar.Items.AddRange([_status, _queueStatus, _progress, _mode]);
 
         BuildCleanup();
         BuildSearch();
+        BuildDeleteQueue();
+        _bottomTabs.TabPages.Add(_deleteTab);
         Controls.Add(_split);
         Controls.Add(_detail);
         Controls.Add(_breadcrumb);
@@ -158,6 +163,7 @@ sealed partial class MainForm : Form
         ApplyHistoryTexts();
         ApplyCompareTexts();
         ApplySearchTexts();
+        ApplyQueueTexts();
         string? selected = SelectedTarget;
         FillTargets();
         if (selected != null) SelectTarget(selected);
@@ -234,13 +240,14 @@ sealed partial class MainForm : Form
 
     void ShowStore(NodeStore store)
     {
+        // Read the version before building the rows: a scan running meanwhile then shows up on the next tick.
+        _shownVersion = store.Version;
         _rows = new TreeRows(store);
         _tree.Rows = _rows;
         ReattachCompare();
         _search.SetStore(store);
         _cleanup.SetStore(store);
         RefreshBottomPanel();
-        _shownVersion = store.Version;
         UpdateBreadcrumb();
         UpdateStatus();
         UpdateDetail();
@@ -254,6 +261,7 @@ sealed partial class MainForm : Form
         UpdateButtons();
         if (session.State == ScanState.Failed)
             MessageBox.Show(this, L.T("ScanFailed", session.Error?.Message ?? ""), Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
+        ApplyDeferredJobs();
         if (session.State == ScanState.Completed && _settings.AutoSave) SaveSnapshot(session);
         RefreshBottomPanel();
         ScanCompleted?.Invoke();
@@ -413,6 +421,13 @@ sealed partial class MainForm : Form
             e.Cancel = true;
             return;
         }
+        if (e.CloseReason == CloseReason.UserClosing && !ConfirmCloseWithQueue())
+        {
+            e.Cancel = true;
+            return;
+        }
+        _queue.CancelWaiting();
+        _queue.Dispose();
         _session?.Cancel();
         // Let a snapshot that is being written finish rather than leave a broken file behind.
         try { _saveTask?.Wait(); } catch { }

@@ -2,7 +2,7 @@ using System.Runtime.InteropServices;
 
 namespace DiskScope.UI;
 
-/// <summary>Windows shell operations: Explorer, recycle bin, the native context menu.</summary>
+/// <summary>Windows shell operations: Explorer and the native context menu.</summary>
 static class Shell
 {
     // --- Explorer ---
@@ -28,45 +28,6 @@ static class Shell
         {
             ILFree(pidl);
         }
-    }
-
-    // --- delete ---
-
-    const uint FO_DELETE = 3;
-    const ushort FOF_NOCONFIRMATION = 0x10;
-    const ushort FOF_ALLOWUNDO = 0x40;
-    const ushort FOF_WANTNUKEWARNING = 0x4000;
-
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-    struct SHFILEOPSTRUCT
-    {
-        public nint hwnd;
-        public uint wFunc;
-        public string pFrom;
-        public string? pTo;
-        public ushort fFlags;
-        [MarshalAs(UnmanagedType.Bool)] public bool fAnyOperationsAborted;
-        public nint hNameMappings;
-        public string? lpszProgressTitle;
-    }
-
-    [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
-    static extern int SHFileOperation(ref SHFILEOPSTRUCT op);
-
-    /// <summary>
-    /// Deletes files and folders through the shell (with its progress dialog), to the recycle bin
-    /// unless <paramref name="permanent"/>. The caller has already asked for confirmation.
-    /// </summary>
-    public static void Delete(IWin32Window owner, IEnumerable<string> paths, bool permanent)
-    {
-        var op = new SHFILEOPSTRUCT
-        {
-            hwnd = owner.Handle,
-            wFunc = FO_DELETE,
-            pFrom = string.Join('\0', paths) + "\0\0",
-            fFlags = (ushort)(FOF_NOCONFIRMATION | (permanent ? 0 : FOF_ALLOWUNDO | FOF_WANTNUKEWARNING)),
-        };
-        SHFileOperation(ref op);
     }
 
     // --- native context menu ---

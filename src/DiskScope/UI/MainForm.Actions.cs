@@ -127,17 +127,12 @@ sealed partial class MainForm
 
     void DeleteSelected(bool permanent) => DeleteNodes(_tree.SelectedNodes(), permanent);
 
-    /// <summary>Asks for confirmation, then deletes the items (to the recycle bin unless permanent).</summary>
+    /// <summary>Asks for confirmation, then puts the items in the delete queue (recycle bin unless permanent).</summary>
     void DeleteNodes(List<int> selected, bool permanent)
     {
         if (_rows == null) return;
-        if (IsBusy)
-        {
-            MessageBox.Show(this, L.T("WaitForScan"), Text, MessageBoxButtons.OK, MessageBoxIcon.Information);
-            return;
-        }
         var store = _rows.Store;
-        var nodes = TreeSync.TopLevel(store, selected.Where(store.IsLive));
+        var nodes = TreeSync.TopLevel(store, selected.Where(n => store.IsLive(n) && (store[n].Flags & NodeFlags.Queued) == 0));
         if (nodes.Count == 0) return;
 
         long size = TreeSync.TotalSize(store, nodes);
@@ -147,29 +142,17 @@ sealed partial class MainForm
         if (MessageBox.Show(this, question, Text, MessageBoxButtons.YesNo, permanent ? MessageBoxIcon.Warning : MessageBoxIcon.Question,
                 MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
 
-        var failed = PerformDelete(nodes, permanent);
-        if (failed.Count > 0)
-            MessageBox.Show(this, L.T("DeleteFailed", string.Join("\n", failed.Take(10))), Text, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        EnqueueDelete(nodes, permanent);
     }
 
-    /// <summary>Deletes without asking and updates the tree; returns the paths of files that are still there.</summary>
+    /// <summary>Test hook: deletes through the queue, waits for it, and returns the paths that are still there.</summary>
     internal List<string> PerformDelete(List<int> nodes, bool permanent)
     {
         var store = _rows!.Store;
-        // Keep the selection near where it was: on the row that follows the first deleted one.
-        int row = _rows.IndexOf(nodes[0]);
-        Shell.Delete(this, nodes.Select(store.GetPath), permanent);
-        long before = store[store.Root].Size;
-        var remaining = TreeSync.RemoveVanished(store, nodes);
-        _tree.Reload();
-        if (row >= 0) _tree.SelectRow(Math.Min(row, _rows.Count - 1));
-        _status.Text = L.T("Freed", Format.Size(before - store[store.Root].Size, L.Culture));
-        UpdateDetail();
-        RefreshSearchAfterChange();
-
-        // A folder that was only partly deleted is rescanned so its size is right again.
-        foreach (int dir in remaining.Where(n => store[n].IsDirectory)) Rescan(dir);
-        return remaining.Where(n => !store[n].IsDirectory).Select(store.GetPath).ToList();
+        var jobs = EnqueueDelete(nodes, permanent);
+        _queue.WaitIdle(TimeSpan.FromMinutes(5));
+        foreach (var job in jobs) ApplyFinishedJob(job);
+        return jobs.Where(j => j.State != Core.Deletion.DeleteState.Done && !j.IsDirectory).Select(j => j.Path).ToList();
     }
 
     void RescanSelected()
@@ -181,16 +164,24 @@ sealed partial class MainForm
         Rescan(node);
     }
 
+    readonly Queue<(NodeStore Store, int Dir)> _rescanQueue = new();
+
+    /// <summary>Rescans a folder in the background; requests arriving meanwhile wait their turn.</summary>
     async void Rescan(int dir)
     {
-        if (_rows == null || _rescanning) return;
-        var store = _rows.Store;
+        if (_rows == null) return;
+        _rescanQueue.Enqueue((_rows.Store, dir));
+        if (_rescanning) return;
         _rescanning = true;
         UpdateButtons();
         _timer.Start();
         try
         {
-            await Task.Run(() => new DirectoryScanner().Rescan(store, dir, new ScanProgress(), CancellationToken.None));
+            while (_rescanQueue.TryDequeue(out var next))
+            {
+                if (next.Store != _rows?.Store || !next.Store.IsLive(next.Dir)) continue;
+                await Task.Run(() => new DirectoryScanner().Rescan(next.Store, next.Dir, new ScanProgress(), CancellationToken.None));
+            }
         }
         finally
         {

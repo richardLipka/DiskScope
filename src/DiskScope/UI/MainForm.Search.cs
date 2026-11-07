@@ -91,20 +91,18 @@ sealed partial class MainForm
         _searchButton.Checked = BottomVisible(_searchTab);
         _cleanupButton.Checked = BottomVisible(_cleanupTab);
         if (_split.Panel2Collapsed) return;
-        if (_bottomTabs.SelectedTab == _searchTab)
-        {
-            _search.FocusName();
-            _search.RunSearch();
-        }
-        else _cleanup.FindLocations();
+        if (_bottomTabs.SelectedTab == _searchTab) _search.FocusName();
+        RefreshBottomPanel();
     }
 
     /// <summary>Re-runs whichever bottom panel is showing, e.g. after a new tree was loaded.</summary>
     void RefreshBottomPanel()
     {
         if (_split.Panel2Collapsed) return;
-        if (_bottomTabs.SelectedTab == _searchTab) _search.RunSearch();
-        else _cleanup.FindLocations();
+        var tab = _bottomTabs.SelectedTab;
+        if (tab == _searchTab) _search.RunSearch();
+        else if (tab == _cleanupTab) _cleanup.FindLocations();
+        else RefreshAnalysisTab(tab);
     }
 
     internal SearchPanel SearchPanelForTest => _search;
