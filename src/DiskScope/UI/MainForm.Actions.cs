@@ -135,6 +135,10 @@ sealed partial class MainForm
 
     void OpenFile(int node) => OpenNode(node);
 
+    /// <summary>Test hook: opens a file as OpenNode does, minus the question; direct = the old, inheriting way.</summary>
+    internal void OpenPathForTest(string path, bool direct) =>
+        Process.Start(ShellOpen.StartInfo(path, elevated: Elevation.IsElevated && !direct));
+
     void RevealSelected() => RevealNode(_tree.FocusedNode);
 
     void RevealNode(int node)

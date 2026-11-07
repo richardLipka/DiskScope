@@ -17,6 +17,7 @@ namespace DiskScope.UI;
 ///   --map-test file.png                                                 opens the treemap, captures
 ///   --scan folder --queue-test file.png                                 queues items in a paused queue, captures, cancels
 ///   --delete-test report.txt [--delete-delay ms]                        deletes test items and writes a report
+///   --scan folder --open-test file [--direct]                           opens a file as the app does (or directly)
 ///   --scan folder --empty-test subfolder --out report.txt [--shot file.png]   empties a folder through the queue, times it
 ///   --messages file.txt                                               with any of the above: error messages shown, one per line
 /// </summary>
@@ -44,6 +45,8 @@ static class TestHooks
         if (Arg("--cleanup-test") is string cleanupShot) CaptureCleanup(form, cleanupShot, args.Contains("--cleanup-mark"));
         if (Arg("--ai-prompt") is string aiPath && Arg("--out") is string aiOut) WriteAiPrompt(form, aiPath, aiOut);
         if (Arg("--data-manager") is string dmShot) CaptureDataManager(form, dmShot);
+        if (Arg("--open-test") is string openPath)
+            RunOpenTest(form, openPath, args.Contains("--direct"));
         if (Arg("--empty-test") is string emptyFolder && Arg("--out") is string emptyReport)
             RunEmptyTest(form, emptyFolder, emptyReport, Arg("--shot"));
         if (Arg("--delete-test") is string report)
@@ -152,6 +155,19 @@ static class TestHooks
             Capture(form, file);
             form.Close();
         });
+    }
+
+    /// <summary>
+    /// After the scan, opens a file the way the app does (or, with direct, the old way: straight from this process)
+    /// without the run-program question, waits a moment for it to start, and quits.
+    /// </summary>
+    public static void RunOpenTest(MainForm form, string path, bool direct)
+    {
+        form.ScanCompleted += () =>
+        {
+            form.OpenPathForTest(path, direct);
+            After(4000, form.Close);
+        };
     }
 
     /// <summary>
