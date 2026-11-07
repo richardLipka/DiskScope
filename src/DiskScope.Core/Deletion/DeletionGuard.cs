@@ -42,12 +42,24 @@ public sealed class DeletionGuard(Func<string, string>? expand = null)
     /// folder above it could otherwise make a protected folder appear under an innocent name. The item itself is not
     /// resolved, so deleting a link (which removes only the link) stays possible.
     /// </summary>
-    public Verdict CheckResolved(string path)
+    public Verdict CheckResolved(string path) => CheckResolved(path, null);
+
+    /// <summary>
+    /// As <see cref="CheckResolved(string)"/>, remembering each parent folder's real path in <paramref name="cache"/>:
+    /// the files of one folder (often thousands at once) then cost one lookup instead of one each.
+    /// </summary>
+    public Verdict CheckResolved(string path, Dictionary<string, string?>? cache)
     {
         var verdict = Check(path);
         if (verdict != Verdict.Allowed) return verdict;
         string? parent = Path.GetDirectoryName(Path.GetFullPath(path).TrimEnd('\\'));
-        if (parent == null || Native.NativeMethods.FinalPath(parent) is not string real) return verdict;
+        if (parent == null) return verdict;
+        if (cache == null || !cache.TryGetValue(parent, out string? real))
+        {
+            real = Native.NativeMethods.FinalPath(parent);
+            if (cache != null) cache[parent] = real;
+        }
+        if (real == null) return verdict;
         return Check(Path.Combine(StripPrefix(real), Path.GetFileName(path.TrimEnd('\\'))));
     }
 

@@ -17,7 +17,8 @@ namespace DiskScope.UI;
 ///   --map-test file.png                                                 opens the treemap, captures
 ///   --scan folder --queue-test file.png                                 queues items in a paused queue, captures, cancels
 ///   --delete-test report.txt [--delete-delay ms]                        deletes test items and writes a report
-///   --messages file.txt                                                 with any of the above: error messages shown, one per line
+///   --scan folder --empty-test subfolder --out report.txt [--shot file.png]   empties a folder through the queue, times it
+///   --messages file.txt                                               with any of the above: error messages shown, one per line
 /// </summary>
 static class TestHooks
 {
@@ -43,6 +44,8 @@ static class TestHooks
         if (Arg("--cleanup-test") is string cleanupShot) CaptureCleanup(form, cleanupShot, args.Contains("--cleanup-mark"));
         if (Arg("--ai-prompt") is string aiPath && Arg("--out") is string aiOut) WriteAiPrompt(form, aiPath, aiOut);
         if (Arg("--data-manager") is string dmShot) CaptureDataManager(form, dmShot);
+        if (Arg("--empty-test") is string emptyFolder && Arg("--out") is string emptyReport)
+            RunEmptyTest(form, emptyFolder, emptyReport, Arg("--shot"));
         if (Arg("--delete-test") is string report)
             RunDeleteTest(form, report, int.TryParse(Arg("--delete-delay"), out int delay) ? delay : 0);
     }
@@ -149,6 +152,44 @@ static class TestHooks
             Capture(form, file);
             form.Close();
         });
+    }
+
+    /// <summary>
+    /// After the scan, empties one folder through the delete queue and measures the longest stall of the UI thread
+    /// while the queue works (a 50 ms timer that should keep ticking), then writes a report and quits.
+    /// </summary>
+    public static void RunEmptyTest(MainForm form, string folder, string report, string? shot)
+    {
+        form.ScanCompleted += () =>
+        {
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            var gapClock = System.Diagnostics.Stopwatch.StartNew();
+            long maxGap = 0;
+            int queued = form.EmptyFolderForTest(folder);
+            long enqueueMs = clock.ElapsedMilliseconds;
+            var timer = new System.Windows.Forms.Timer { Interval = 50 };
+            timer.Tick += (_, _) =>
+            {
+                maxGap = Math.Max(maxGap, gapClock.ElapsedMilliseconds);
+                gapClock.Restart();
+                if (!form.QueueIdleForTest || clock.ElapsedMilliseconds < 500) return;
+                timer.Stop();
+                var store = form.Store!;
+                int node = store.FindPath(folder);
+                var lines = new List<string>
+                {
+                    $"queued {queued} in {enqueueMs} ms",
+                    $"done in {clock.ElapsedMilliseconds} ms, longest UI stall {maxGap} ms",
+                    $"tree: folder files {(node == NodeStore.None ? -1 : store[node].FileCount)}, root files {store[store.Root].FileCount}",
+                    $"disk: files left {Directory.EnumerateFiles(folder).Count()}",
+                    form.QueueSummaryForTest,
+                };
+                File.WriteAllLines(report, lines);
+                if (shot != null) Capture(form, shot);
+                form.Close();
+            };
+            timer.Start();
+        };
     }
 
     /// <summary>When the tree is ready, opens the cleanup panel, captures it with the first item selected, quits.</summary>

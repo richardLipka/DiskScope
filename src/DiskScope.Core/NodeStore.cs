@@ -119,7 +119,7 @@ public sealed class NodeStore
         n.Parent = None;
         n.FirstChild = None;
         n.NextSibling = None;
-        n.MTime = mtime;
+        n.MTime = Format.ValidFileTime(mtime); // out-of-range times (damaged data) become "unknown"
         n.NameOffset = AddName(path, out n.NameLen);
         n.Flags = NodeFlags.Used | NodeFlags.Directory;
         Root = root;
@@ -136,8 +136,8 @@ public sealed class NodeStore
         n.NextSibling = None;
         n.Size = size;
         n.Length = length;
-        n.MTime = mtime;
-        n.ATime = atime;
+        n.MTime = Format.ValidFileTime(mtime); // out-of-range times (damaged data) become "unknown"
+        n.ATime = Format.ValidFileTime(atime);
         n.Attributes = attributes;
         n.NameOffset = AddName(name, out n.NameLen);
         Volatile.Write(ref Unsafe(ref n.Flags), (ushort)(flags | NodeFlags.Used));
@@ -171,6 +171,8 @@ public sealed class NodeStore
     /// <summary>Raises the newest-change and newest-access times of a directory and its ancestors.</summary>
     public void MaxTimesToAncestors(int dir, long mtime, long atime)
     {
+        mtime = Format.ValidFileTime(mtime);
+        atime = Format.ValidFileTime(atime);
         for (int i = dir; i != None; i = this[i].Parent)
         {
             ref var n = ref this[i];
@@ -275,8 +277,8 @@ public sealed class NodeStore
         n.NextSibling = None;
         n.Size = size;
         n.Length = length;
-        n.MTime = mtime;
-        n.ATime = atime;
+        n.MTime = Format.ValidFileTime(mtime); // out-of-range times (damaged data) become "unknown"
+        n.ATime = Format.ValidFileTime(atime);
         n.Attributes = attributes;
         n.NameOffset = ReserveName(rawName.Length, out var dest);
         rawName.CopyTo(dest);
@@ -419,6 +421,46 @@ public sealed class NodeStore
         AddToAncestors(parent, -n.Size, -n.Length, -files, -dirs);
         n.Flags |= NodeFlags.Deleted;
         MarkDescendantsDeleted(index);
+        MarkChanged();
+    }
+
+    /// <summary>
+    /// Removes many nodes at once (e.g. the 100 000 files of an emptied folder). Each parent's child list is rebuilt
+    /// once, instead of being searched for every removed child, which would take quadratic time. Nodes already
+    /// removed, or inside another removed node, are skipped. Must not run concurrently with a scan.
+    /// </summary>
+    public void RemoveMany(IEnumerable<int> nodes)
+    {
+        var set = nodes.Where(n => n != Root && IsLive(n)).ToHashSet();
+        // Only the topmost: a node inside another removed one goes with it (and must not be subtracted twice).
+        var top = set.Where(n =>
+        {
+            for (int p = this[n].Parent; p != None; p = this[p].Parent)
+                if (set.Contains(p)) return false;
+            return true;
+        }).ToList();
+        if (top.Count == 0) return;
+        var topSet = top.ToHashSet();
+
+        foreach (int n in top)
+        {
+            ref var e = ref this[n];
+            AddToAncestors(e.Parent, -e.Size, -e.Length, e.IsDirectory ? -e.FileCount : -1, e.IsDirectory ? -(e.DirCount + 1) : 0);
+            e.Flags |= NodeFlags.Deleted;
+            MarkDescendantsDeleted(n);
+        }
+        foreach (int parent in top.Select(n => this[n].Parent).Distinct())
+        {
+            int head = None, tail = None;
+            for (int c = this[parent].FirstChild; c != None; c = this[c].NextSibling)
+            {
+                if (topSet.Contains(c)) continue;
+                if (tail == None) head = c; else this[tail].NextSibling = c;
+                tail = c;
+            }
+            if (tail != None) this[tail].NextSibling = None;
+            this[parent].FirstChild = head;
+        }
         MarkChanged();
     }
 

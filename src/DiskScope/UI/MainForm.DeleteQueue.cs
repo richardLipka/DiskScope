@@ -13,16 +13,20 @@ sealed partial class MainForm
     readonly ToolStripStatusLabel _queueStatus = new() { IsLink = true, Visible = false };
     /// <summary>Finished jobs whose tree updates wait for the running scan to end.</summary>
     readonly List<DeleteJob> _deferredJobs = [];
+    /// <summary>
+    /// Job changes reported by the worker, applied to the view in batches by a timer: emptying a folder of 100 000
+    /// files must not rebuild the tree and the panels 100 000 times.
+    /// </summary>
+    readonly System.Collections.Concurrent.ConcurrentQueue<DeleteJob> _jobUpdates = new();
+    readonly System.Windows.Forms.Timer _queueTimer = new() { Interval = 200 };
     long _freedThisSession;
 
     void BuildDeleteQueue()
     {
-        _queue.JobChanged += job => PostToUi(() => OnJobChanged(job));
+        _queue.JobChanged += _jobUpdates.Enqueue;
+        _queueTimer.Tick += (_, _) => DrainJobUpdates();
+        _queueTimer.Start();
         _queuePanel.Dock = DockStyle.Fill;
-        _queuePanel.Cancelled += jobs =>
-        {
-            foreach (var job in jobs) OnJobChanged(job);
-        };
         _deleteTab.Controls.Add(_queuePanel);
         _queueStatus.Click += (_, _) => ShowBottom(_deleteTab);
         HandleCreated += (_, _) => _deleter.OwnerWindow = Handle;
@@ -54,51 +58,75 @@ sealed partial class MainForm
         }).ToList();
         foreach (int n in nodes) store.SetFlag(n, NodeFlags.Queued);
         _queue.Enqueue(jobs);
-        foreach (var job in jobs) _queuePanel.Update(job);
+        _queuePanel.Add(jobs);
         _tree.Invalidate();
         UpdateQueueStatus();
         return jobs;
     }
 
-    void OnJobChanged(DeleteJob job)
+    /// <summary>Applies the job changes reported since the last tick, all at once.</summary>
+    void DrainJobUpdates()
     {
-        _queuePanel.Update(job);
-        if (job.Finished) ApplyFinishedJob(job);
+        if (_jobUpdates.IsEmpty || IsDisposed) return;
+        var finished = new List<DeleteJob>();
+        var seen = new HashSet<DeleteJob>();
+        while (_jobUpdates.TryDequeue(out var job))
+            if (seen.Add(job))
+            {
+                _queuePanel.Update(job);
+                if (job.Finished) finished.Add(job);
+            }
+        _queuePanel.UpdateSummary();
+        ApplyFinishedJobs(finished);
         UpdateQueueStatus();
     }
 
-    /// <summary>Brings the tree in line with a finished job: removes what was deleted, rescans what was only partly deleted.</summary>
-    void ApplyFinishedJob(DeleteJob job)
+    /// <summary>
+    /// Brings the tree in line with finished jobs: removes what was deleted (in one pass), rescans folders that were
+    /// only partly deleted, then refreshes the view once.
+    /// </summary>
+    void ApplyFinishedJobs(List<DeleteJob> jobs)
     {
-        var store = job.Store;
-        if (store == null || job.Node == NodeStore.None || !store.IsLive(job.Node)) return;
-        if (store != _rows?.Store)
+        var removed = new List<int>();
+        var rescan = new List<int>();
+        foreach (var job in jobs)
         {
+            var store = job.Store;
+            if (store == null || job.Node == NodeStore.None || !store.IsLive(job.Node)) continue;
+            if (store != _rows?.Store)
+            {
+                store.ClearFlag(job.Node, NodeFlags.Queued);
+                continue;
+            }
+            if (IsScanning && job.State != DeleteState.Cancelled)
+            {
+                // The scanner may still be adding to this part of the tree; apply once it is done.
+                if (!_deferredJobs.Contains(job)) _deferredJobs.Add(job);
+                continue;
+            }
             store.ClearFlag(job.Node, NodeFlags.Queued);
-            return;
-        }
-        if (IsScanning && job.State != DeleteState.Cancelled)
-        {
-            // The scanner may still be adding to this part of the tree; apply once it is done.
-            if (!_deferredJobs.Contains(job)) _deferredJobs.Add(job);
-            return;
-        }
-        store.ClearFlag(job.Node, NodeFlags.Queued);
-        if (job.State == DeleteState.Done)
-        {
-            int row = _rows.IndexOf(job.Node);
-            bool wasFocused = _tree.FocusedNode == job.Node;
-            store.Remove(job.Node);
-            _freedThisSession += job.Size;
-            _tree.Reload();
-            if (wasFocused && row >= 0) _tree.SelectRow(Math.Min(row, _rows.Count - 1));
-        }
-        else if (job.State == DeleteState.Failed && job.IsDirectory && Directory.Exists(job.Path))
-        {
+            if (job.State == DeleteState.Done)
+            {
+                removed.Add(job.Node);
+                _freedThisSession += job.Size;
+            }
             // Partly deleted: rescan so its size is right. A folder on a disk that went away is left as it was,
             // since rescanning would only drop its contents from the tree.
-            Rescan(job.Node);
+            else if (job.State == DeleteState.Failed && job.IsDirectory && Directory.Exists(LongPath.Of(job.Path)))
+                rescan.Add(job.Node);
         }
+        if (_rows == null || removed.Count + rescan.Count == 0 && jobs.Count == 0) return;
+
+        if (removed.Count > 0)
+        {
+            int focused = _tree.FocusedNode;
+            int row = focused == NodeStore.None ? -1 : _rows.IndexOf(focused);
+            bool focusGone = focused != NodeStore.None && removed.Contains(focused);
+            _rows.Store.RemoveMany(removed);
+            _tree.Reload();
+            if (focusGone && row >= 0) _tree.SelectRow(Math.Min(row, _rows.Count - 1));
+        }
+        foreach (int dir in rescan) Rescan(dir);
         _tree.Invalidate();
         UpdateDetail();
         RefreshSearchAfterChange();
@@ -108,7 +136,7 @@ sealed partial class MainForm
     {
         var jobs = _deferredJobs.ToList();
         _deferredJobs.Clear();
-        foreach (var job in jobs) ApplyFinishedJob(job);
+        ApplyFinishedJobs(jobs);
     }
 
     void UpdateQueueStatus()
@@ -137,8 +165,25 @@ sealed partial class MainForm
 
     internal void CancelQueueForTest()
     {
-        foreach (var job in _queue.CancelWaiting()) OnJobChanged(job);
+        _queue.CancelWaiting();
+        DrainJobUpdates();
     }
+
+    /// <summary>Test hook: queues the contents of a folder for permanent deletion, as "Empty permanently" does.</summary>
+    internal int EmptyFolderForTest(string path)
+    {
+        if (_rows?.Store.FindPath(path) is not int folder || folder == NodeStore.None) return 0;
+        var store = _rows.Store;
+        var children = new List<int>();
+        for (int c = store[folder].FirstChild; c != NodeStore.None; c = store[c].NextSibling) children.Add(c);
+        EnqueueDelete(children, permanent: true);
+        ShowBottom(_deleteTab);
+        return children.Count;
+    }
+
+    internal bool QueueIdleForTest => _queue.WaitingCount == 0 && _jobUpdates.IsEmpty;
+
+    internal string QueueSummaryForTest => $"waiting {_queue.WaitingCount}, freed {_freedThisSession}";
 
     /// <summary>Asks before closing while items still wait; true when the window may close.</summary>
     bool ConfirmCloseWithQueue()

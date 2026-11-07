@@ -54,7 +54,7 @@ internal static unsafe partial class NativeMethods
     public static string? FinalPath(string path)
     {
         const uint FILE_READ_ATTRIBUTES = 0x80;
-        using var handle = CreateFile(path.StartsWith(@"\\", StringComparison.Ordinal) ? path : @"\\?\" + path,
+        using var handle = CreateFile(LongPath.Of(path),
             FILE_READ_ATTRIBUTES, FILE_SHARE_ALL, 0, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, 0);
         if (handle.IsInvalid) return null;
         var buffer = new char[32768];

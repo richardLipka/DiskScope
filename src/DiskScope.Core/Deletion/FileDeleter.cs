@@ -22,6 +22,9 @@ public interface IFileDeleter
 /// </summary>
 public sealed class FileDeleter : IFileDeleter
 {
+    /// <summary><see cref="DeleteResult.Error"/> for an item the recycle bin cannot take safely; the UI translates it.</summary>
+    public const string ErrorUnsafeName = "#unsafe-name";
+
     /// <summary>Window that owns the only dialog the shell may still show: an item too large for the recycle bin.</summary>
     public nint OwnerWindow { get; set; }
 
@@ -35,8 +38,18 @@ public sealed class FileDeleter : IFileDeleter
         string? error = null;
         try
         {
-            if (method == DeleteMethod.RecycleBin) error = Recycle(path);
-            else DeleteTree(isDirectory || Directory.Exists(path) ? new DirectoryInfo(path) : new FileInfo(path), ref failed, ref error, cancel);
+            if (method == DeleteMethod.RecycleBin)
+            {
+                // The shell cannot take extended paths and would turn "abc." into "abc", recycling a different item.
+                if (LongPath.HasUnsafeName(path)) return new DeleteResult(false, 0, ErrorUnsafeName);
+                error = Recycle(path);
+            }
+            else
+            {
+                // Extended path: names ending in a dot or space stay intact, and so do their entries' paths.
+                string full = LongPath.Of(path);
+                DeleteTree(isDirectory || Directory.Exists(full) ? new DirectoryInfo(full) : new FileInfo(full), ref failed, ref error, cancel);
+            }
         }
         catch (OperationCanceledException)
         {
@@ -70,7 +83,8 @@ public sealed class FileDeleter : IFileDeleter
     {
         const uint Invalid = 0xFFFFFFFF;
         const int FileNotFound = 2, PathNotFound = 3;
-        string full = path.StartsWith(@"\\", StringComparison.Ordinal) ? path : @"\\?\" + Path.GetFullPath(path);
+        // Not Path.GetFullPath: it would strip a trailing dot or space and probe a different item.
+        string full = LongPath.Of(Path.IsPathFullyQualified(path) ? path : Path.GetFullPath(path));
         if (GetFileAttributes(full) != Invalid) return (PathState.Exists, null);
         int code = Marshal.GetLastPInvokeError();
         if (code is FileNotFound or PathNotFound)

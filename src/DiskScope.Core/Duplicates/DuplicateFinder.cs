@@ -164,9 +164,9 @@ public sealed class DuplicateFinder
     {
         try
         {
-            var attributes = File.GetAttributes(path);
+            var attributes = File.GetAttributes(LongPath.Of(path)); // extended: "abc." must not become "abc"
             if (((uint)attributes & CloudOrOffline) != 0) return null;
-            return new FileInfo(path).Length;
+            return new FileInfo(LongPath.Of(path)).Length;
         }
         catch (FileNotFoundException)
         {
@@ -190,7 +190,7 @@ public sealed class DuplicateFinder
     {
         try
         {
-            using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, 1 << 16,
+            using var fs = new FileStream(LongPath.Of(path), FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, 1 << 16,
                 sampleOnly ? FileOptions.RandomAccess : FileOptions.SequentialScan);
             var id = FileId(fs.SafeFileHandle);
             using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);

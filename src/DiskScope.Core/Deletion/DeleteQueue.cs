@@ -43,6 +43,11 @@ public sealed class DeleteQueue : IDisposable
 {
     readonly IFileDeleter _deleter;
     readonly List<DeleteJob> _jobs = [];
+    // Jobs not yet started, in order: taking the next one must not scan the whole list (100 000 items when a big
+    // folder is emptied would make that quadratic).
+    readonly Queue<DeleteJob> _pending = new();
+    readonly Dictionary<string, string?> _resolvedParents = new(StringComparer.OrdinalIgnoreCase);
+    int _active; // waiting + running
     readonly object _lock = new();
     readonly SemaphoreSlim _signal = new(0);
     readonly CancellationTokenSource _shutdown = new();
@@ -68,10 +73,8 @@ public sealed class DeleteQueue : IDisposable
         get { lock (_lock) return [.. _jobs]; }
     }
 
-    public int WaitingCount
-    {
-        get { lock (_lock) return _jobs.Count(j => j.State is DeleteState.Waiting or DeleteState.Running); }
-    }
+    /// <summary>Jobs waiting or running; constant time, so it can be shown after every job.</summary>
+    public int WaitingCount => Volatile.Read(ref _active);
 
     public bool Paused
     {
@@ -85,7 +88,13 @@ public sealed class DeleteQueue : IDisposable
 
     public void Enqueue(IEnumerable<DeleteJob> jobs)
     {
-        lock (_lock) _jobs.AddRange(jobs);
+        lock (_lock)
+            foreach (var job in jobs)
+            {
+                _jobs.Add(job);
+                _pending.Enqueue(job);
+                _active++;
+            }
         _signal.Release();
     }
 
@@ -95,8 +104,10 @@ public sealed class DeleteQueue : IDisposable
         List<DeleteJob> cancelled;
         lock (_lock)
         {
-            cancelled = _jobs.Where(j => j.State == DeleteState.Waiting).ToList();
+            cancelled = _pending.Where(j => j.State == DeleteState.Waiting).ToList();
             foreach (var j in cancelled) j.State = DeleteState.Cancelled;
+            _pending.Clear();
+            _active -= cancelled.Count;
         }
         foreach (var j in cancelled) Notify(j);
         return cancelled;
@@ -128,8 +139,14 @@ public sealed class DeleteQueue : IDisposable
             if (!_paused)
                 lock (_lock)
                 {
-                    job = _jobs.FirstOrDefault(j => j.State == DeleteState.Waiting);
-                    if (job != null) job.State = DeleteState.Running;
+                    while (_pending.TryDequeue(out var next))
+                        if (next.State == DeleteState.Waiting)
+                        {
+                            job = next;
+                            job.State = DeleteState.Running;
+                            break;
+                        }
+                    if (_pending.Count == 0 && job == null) _resolvedParents.Clear(); // idle: forget cached paths
                 }
             if (job == null)
             {
@@ -140,24 +157,23 @@ public sealed class DeleteQueue : IDisposable
             Notify(job);
             try
             {
-                if (_guard.CheckResolved(job.Path) != DeletionGuard.Verdict.Allowed)
+                if (_guard.CheckResolved(job.Path, _resolvedParents) != DeletionGuard.Verdict.Allowed)
+                    job.Error = DeleteJob.ErrorProtected;
+                else if (!IsUnchanged(job))
+                    job.Error = DeleteJob.ErrorChanged;
+                else
                 {
-                    Fail(job, DeleteJob.ErrorProtected);
-                    continue;
+                    var result = _deleter.Delete(job.Path, job.IsDirectory, job.Method, token);
+                    job.FailedEntries = result.FailedEntries;
+                    job.Error = result.Error;
+                    job.State = result.Gone ? DeleteState.Done : DeleteState.Failed;
                 }
-                if (!IsUnchanged(job))
-                {
-                    Fail(job, DeleteJob.ErrorChanged);
-                    continue;
-                }
-                var result = _deleter.Delete(job.Path, job.IsDirectory, job.Method, token);
-                job.FailedEntries = result.FailedEntries;
-                job.Error = result.Error;
-                job.State = result.Gone ? DeleteState.Done : DeleteState.Failed;
+                if (job.State == DeleteState.Running) job.State = DeleteState.Failed; // refused above
             }
             catch (OperationCanceledException)
             {
                 job.State = DeleteState.Cancelled;
+                Interlocked.Decrement(ref _active);
                 return;
             }
             catch (Exception ex)
@@ -165,6 +181,7 @@ public sealed class DeleteQueue : IDisposable
                 job.Error = ex.Message;
                 job.State = DeleteState.Failed;
             }
+            Interlocked.Decrement(ref _active);
             Notify(job);
         }
     }
@@ -182,13 +199,6 @@ public sealed class DeleteQueue : IDisposable
         }
     }
 
-    void Fail(DeleteJob job, string error)
-    {
-        job.Error = error;
-        job.State = DeleteState.Failed;
-        Notify(job);
-    }
-
     /// <summary>
     /// A file is deleted only if it still has the size and write time it had when scanned: the tree may be an old
     /// saved scan, and a different file may now live at the same path.
@@ -196,7 +206,7 @@ public sealed class DeleteQueue : IDisposable
     static bool IsUnchanged(DeleteJob job)
     {
         if (job.IsDirectory || job.ExpectedLength is not long length) return true;
-        var info = new FileInfo(job.Path);
+        var info = new FileInfo(Path.IsPathFullyQualified(job.Path) ? LongPath.Of(job.Path) : job.Path);
         if (!info.Exists) return true; // already gone: nothing will be deleted
         return info.Length == length && (job.ExpectedMTime is not long mtime || mtime == 0 || info.LastWriteTimeUtc.ToFileTimeUtc() == mtime);
     }

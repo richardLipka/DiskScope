@@ -17,7 +17,7 @@ public static class TreeSync
 
     public static bool ExistsOnDisk(NodeStore store, int node)
     {
-        string path = store.GetPath(node);
+        string path = LongPath.Of(store.GetPath(node)); // keeps a trailing dot or space in names
         return store[node].IsDirectory ? Directory.Exists(path) : File.Exists(path);
     }
 

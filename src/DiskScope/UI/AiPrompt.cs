@@ -66,7 +66,7 @@ static class AiPrompt
 
     static string Size(long bytes) => Format.Size(bytes, L.Culture);
 
-    static string Date(long filetime) => filetime > 0 ? DateTime.FromFileTimeUtc(filetime).ToLocalTime().ToString("d", L.Culture) : "?";
+    static string Date(long filetime) => Format.FileTime(filetime)?.ToLocalTime().ToString("d", L.Culture) ?? "?";
 
     static string RelativePath(NodeStore store, int node, int ancestor)
     {

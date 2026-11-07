@@ -94,7 +94,7 @@ public sealed class OrphanFinder
                     : !index.Matches(name, store.GetPath(node));
                 if (!orphan) continue;
 
-                int days = store[node].MTime > 0 ? (int)(nowUtc - DateTime.FromFileTimeUtc(store[node].MTime)).TotalDays : int.MaxValue;
+                int days = Format.FileTime(store[node].MTime) is DateTime changed ? (int)Math.Clamp((nowUtc - changed).TotalDays, 0, int.MaxValue - 1) : int.MaxValue;
                 var confidence = kind == OrphanKind.StoreApp || days >= StaleDays ? OrphanConfidence.Likely : OrphanConfidence.Possible;
                 result.Add(new OrphanCandidate(node, kind, confidence, days));
             }

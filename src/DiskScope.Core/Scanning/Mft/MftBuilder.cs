@@ -45,7 +45,7 @@ internal sealed class MftBuilder
         }
         if (number == MftParser.RootRecord)
         {
-            _store[_store.Root].MTime = r.MTime;
+            _store[_store.Root].MTime = Format.ValidFileTime(r.MTime);
             return;
         }
 

@@ -199,7 +199,7 @@ sealed class TreeListView : ListView
     }
 
     public static string Date(long filetime) =>
-        filetime > 0 ? DateTime.FromFileTimeUtc(filetime).ToLocalTime().ToString("g", L.Culture) : "";
+        Format.FileTime(filetime)?.ToLocalTime().ToString("g", L.Culture) ?? "";
 
     double? Percent(int node)
     {

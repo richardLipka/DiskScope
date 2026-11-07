@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using DiskScope.Core;
 using DiskScope.Core.Deletion;
+using DiskScope.Core.Native;
 using DiskScope.Core.Scanning;
 
 namespace DiskScope.UI;
@@ -80,7 +81,8 @@ sealed partial class MainForm
         _miRescan.Text = L.T("Rescan");
         _miRecycle.Text = L.T("Recycle");
         _miDelete.Text = L.T("DeletePermanent");
-        _miWindows.Text = L.T("WindowsMenu") + "  (Shift+…)";
+        // Commands of Explorer's own menu run inside this process, so with administrator rights when elevated.
+        _miWindows.Text = L.T("WindowsMenu") + (Elevation.IsElevated ? "  " + L.T("WindowsMenuElevated") : "") + "  (Shift+…)";
         _miAi.Text = L.T("CopyAiPrompt");
         _miDuplicates.Text = L.T("DupInFolder");
     }
@@ -111,13 +113,19 @@ sealed partial class MainForm
     {
         if (_rows == null || node == NodeStore.None) return;
         string path = _rows.Store.GetPath(node);
+        // Windows would open a different item for "abc." (it becomes "abc"); better not to open anything.
+        if (ShellOpen.HasUnsafeEnding(path))
+        {
+            MessageBox.Show(this, L.T("UnsafeNameOpen", path), Text, MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
         if (!_rows.Store[node].IsDirectory && Executable.Contains(Path.GetExtension(path)) &&
-            MessageBox.Show(this, L.T("ConfirmRunProgram", path), Text, MessageBoxButtons.YesNo, MessageBoxIcon.Warning,
-                MessageBoxDefaultButton.Button2) != DialogResult.Yes)
+            MessageBox.Show(this, L.T("ConfirmRunProgram", path) + (Elevation.IsElevated ? "\n\n" + L.T("RunsAsUser") : ""), Text,
+                MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) != DialogResult.Yes)
             return;
         try
         {
-            Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+            Process.Start(ShellOpen.StartInfo(path, Elevation.IsElevated));
         }
         catch (Exception ex)
         {
@@ -153,7 +161,9 @@ sealed partial class MainForm
         if (nodes.Count == 0) return;
 
         // Drive roots, system and program folders, profiles and their main folders are never deleted.
-        var refused = nodes.Where(n => _guard.CheckResolved(store.GetPath(n)) != DeletionGuard.Verdict.Allowed).ToList();
+        // One real-path lookup per parent folder, not per item: emptying a big folder checks thousands at once.
+        var resolved = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+        var refused = nodes.Where(n => _guard.CheckResolved(store.GetPath(n), resolved) != DeletionGuard.Verdict.Allowed).ToList();
         if (refused.Count > 0)
         {
             MessageBox.Show(this, L.T("DeleteProtected", string.Join("\n", refused.Take(10).Select(store.GetPath))), Text,
@@ -187,10 +197,9 @@ sealed partial class MainForm
     /// <summary>Test hook: deletes through the queue, waits for it, and returns the paths that are still there.</summary>
     internal List<string> PerformDelete(List<int> nodes, bool permanent)
     {
-        var store = _rows!.Store;
         var jobs = EnqueueDelete(nodes, permanent);
         _queue.WaitIdle(TimeSpan.FromMinutes(5));
-        foreach (var job in jobs) ApplyFinishedJob(job);
+        DrainJobUpdates();
         return jobs.Where(j => j.State != Core.Deletion.DeleteState.Done && !j.IsDirectory).Select(j => j.Path).ToList();
     }
 

@@ -68,6 +68,34 @@ public class NodeStoreTests
         Assert.Equal(NodeStore.None, s[root].FirstChild);
     }
 
+    [Theory]
+    [InlineData(long.MaxValue)]
+    [InlineData(-5L)]
+    [InlineData(2650467744000000000L)] // one tick after DateTime.MaxValue
+    public void OutOfRangeTimesBecomeUnknownAndNeverThrow(long bad)
+    {
+        var s = new NodeStore();
+        int root = s.CreateRoot(@"C:\", bad);
+        int f = s.Add(root, "weird.bin", NodeFlags.None, 0, 1, 1, bad, bad);
+        s.PublishChildren(root, f);
+        s.MaxTimesToAncestors(root, bad, bad);
+        Assert.Equal(0, s[root].MTime);
+        Assert.Equal(0, s[f].MTime);
+        Assert.Equal(0, s[f].ATime);
+        Assert.Null(Format.FileTime(bad));
+        // Analyses that turn times into dates do not throw either.
+        _ = new DiskScope.Core.Orphans.OrphanFinder().Find(s, [new("x", null, null)], new HashSet<string>(), [], DateTime.UtcNow);
+        Assert.Empty(Search.Run(s, new SearchQuery { ModifiedBefore = DateTime.UtcNow }).Nodes);
+    }
+
+    [Fact]
+    public void ValidTimesAreKept()
+    {
+        long t = new DateTime(2024, 5, 1, 0, 0, 0, DateTimeKind.Utc).ToFileTimeUtc();
+        Assert.Equal(t, Format.ValidFileTime(t));
+        Assert.Equal(new DateTime(2024, 5, 1, 0, 0, 0, DateTimeKind.Utc), Format.FileTime(t));
+    }
+
     [Fact]
     public void ManyNodesCrossChunkBoundaries()
     {

@@ -27,6 +27,19 @@ public static class Format
 
     public static string Count(long n, CultureInfo? culture = null) => n.ToString("N0", culture ?? CultureInfo.CurrentCulture);
 
+    /// <summary>The largest FILETIME a DateTime can hold (31 Dec 9999); Windows allows larger ones.</summary>
+    static readonly long MaxFileTime = DateTime.MaxValue.ToFileTimeUtc();
+
+    /// <summary>
+    /// A FILETIME that DateTime can represent, else 0 (unknown). Damaged MFT records, crafted snapshots or odd files
+    /// can carry times DateTime.FromFileTimeUtc would throw on.
+    /// </summary>
+    public static long ValidFileTime(long filetime) => filetime > 0 && filetime <= MaxFileTime ? filetime : 0;
+
+    /// <summary>Converts a FILETIME without ever throwing; null when it is unknown or out of range.</summary>
+    public static DateTime? FileTime(long filetime) =>
+        ValidFileTime(filetime) is long v and > 0 ? DateTime.FromFileTimeUtc(v) : null;
+
     public static string Duration(TimeSpan t) =>
         t.TotalHours >= 1 ? $"{(int)t.TotalHours}:{t.Minutes:00}:{t.Seconds:00}" : $"{t.Minutes:00}:{t.Seconds:00}";
 }

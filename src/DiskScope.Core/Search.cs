@@ -101,6 +101,8 @@ public static class Search
             bool dir = n.IsDirectory;
             if (q.Kind == SearchKind.Files ? dir : q.Kind is SearchKind.Folders or SearchKind.FoldersOwnContent && !dir) continue;
             if (n.MTime < fromTime || n.MTime > toTime) continue;
+            // An unknown time (0) is not "old": age filters leave such items out, as they do for access times.
+            if (toTime != long.MaxValue && n.MTime == 0) continue;
             if (accessedBefore != long.MaxValue && (n.ATime == 0 || n.ATime > accessedBefore)) continue;
             if (!dir && (n.Size < q.MinSize || n.Size > q.MaxSize)) continue;
             if (dir && q.Kind != SearchKind.FoldersOwnContent && (n.Size < q.MinSize || n.Size > q.MaxSize)) continue;

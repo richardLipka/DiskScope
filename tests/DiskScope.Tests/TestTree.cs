@@ -27,6 +27,7 @@ sealed class TestTree : IDisposable
 
     public void Dispose()
     {
-        try { Directory.Delete(Root, true); } catch { }
+        // Extended path, so items whose names end in a dot or space (some tests create them) go too.
+        try { Directory.Delete(@"\\?\" + Root, true); } catch { }
     }
 }
