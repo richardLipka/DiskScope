@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using DiskScope.Core;
+using DiskScope.Core.Deletion;
 using DiskScope.Core.Scanning;
 
 namespace DiskScope.UI;
@@ -99,10 +100,21 @@ sealed partial class MainForm
 
     void OpenSelected() => OpenNode(_tree.FocusedNode);
 
+    /// <summary>File types that run code when opened; opening them asks first, so a double-click cannot start one by accident.</summary>
+    static readonly HashSet<string> Executable = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".exe", ".com", ".scr", ".pif", ".bat", ".cmd", ".ps1", ".psm1", ".vbs", ".vbe", ".js", ".jse", ".wsf", ".wsh", ".hta",
+        ".msi", ".msix", ".msp", ".appx", ".appinstaller", ".lnk", ".url", ".jar", ".reg", ".cpl", ".msc", ".application", ".py", ".pyw",
+    };
+
     void OpenNode(int node)
     {
         if (_rows == null || node == NodeStore.None) return;
         string path = _rows.Store.GetPath(node);
+        if (!_rows.Store[node].IsDirectory && Executable.Contains(Path.GetExtension(path)) &&
+            MessageBox.Show(this, L.T("ConfirmRunProgram", path), Text, MessageBoxButtons.YesNo, MessageBoxIcon.Warning,
+                MessageBoxDefaultButton.Button2) != DialogResult.Yes)
+            return;
         try
         {
             Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
@@ -136,17 +148,40 @@ sealed partial class MainForm
     {
         if (_rows == null) return;
         var store = _rows.Store;
-        var nodes = TreeSync.TopLevel(store, selected.Where(n => store.IsLive(n) && (store[n].Flags & NodeFlags.Queued) == 0));
+        // Skip what is already queued, itself or through a queued folder above it.
+        var nodes = TreeSync.TopLevel(store, selected.Where(n => store.IsLive(n) && !InQueuedFolder(store, n)));
         if (nodes.Count == 0) return;
+
+        // Drive roots, system and program folders, profiles and their main folders are never deleted.
+        var refused = nodes.Where(n => _guard.CheckResolved(store.GetPath(n)) != DeletionGuard.Verdict.Allowed).ToList();
+        if (refused.Count > 0)
+        {
+            MessageBox.Show(this, L.T("DeleteProtected", string.Join("\n", refused.Take(10).Select(store.GetPath))), Text,
+                MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            nodes = nodes.Except(refused).ToList();
+            if (nodes.Count == 0) return;
+        }
 
         long size = TreeSync.TotalSize(store, nodes);
         var paths = nodes.Select(store.GetPath).ToList();
         string list = string.Join("\n", paths.Take(10)) + (paths.Count > 10 ? "\n" + L.T("AndMore", paths.Count - 10) : "");
         string question = L.T(permanent ? "ConfirmDelete" : "ConfirmRecycle", nodes.Count, Format.Size(size, L.Culture), list);
+        // A saved scan may be days old: what is in those folders now may differ from what the tree shows.
+        if (_session == null && _loaded != null && (DateTime.UtcNow - _loaded.ScanTimeUtc).TotalHours > 24)
+            question += "\n\n" + L.T("DeleteFromOldScan", _loaded.ScanTimeUtc.ToLocalTime().ToString("g", L.Culture));
         if (MessageBox.Show(this, question, Text, MessageBoxButtons.YesNo, permanent ? MessageBoxIcon.Warning : MessageBoxIcon.Question,
                 MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
 
         EnqueueDelete(nodes, permanent);
+    }
+
+    readonly DeletionGuard _guard = new();
+
+    static bool InQueuedFolder(NodeStore store, int node)
+    {
+        for (int i = node; i != NodeStore.None; i = store[i].Parent)
+            if ((store[i].Flags & NodeFlags.Queued) != 0) return true;
+        return false;
     }
 
     /// <summary>Test hook: deletes through the queue, waits for it, and returns the paths that are still there.</summary>

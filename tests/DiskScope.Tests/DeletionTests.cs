@@ -85,6 +85,31 @@ public class DeletionTests
     }
 
     [Fact]
+    public void QueueRefusesProtectedPlacesAndFilesChangedSinceTheScan()
+    {
+        using var t = new TestTree();
+        string changed = t.File("changed.bin", 100);
+        string same = t.File("same.bin", 100);
+        var scannedTime = File.GetLastWriteTimeUtc(same).ToFileTimeUtc();
+        File.WriteAllBytes(changed, new byte[150]); // grown after the scan
+
+        var fake = new SlowFakeDeleter();
+        using var queue = new DeleteQueue(fake);
+        queue.Enqueue([
+            new DeleteJob(@"C:\Windows\System32", true, 1, DeleteMethod.Permanent),
+            new DeleteJob(changed, false, 100, DeleteMethod.Permanent) { ExpectedLength = 100, ExpectedMTime = scannedTime },
+            new DeleteJob(same, false, 100, DeleteMethod.Permanent) { ExpectedLength = 100, ExpectedMTime = scannedTime },
+        ]);
+        Assert.True(queue.WaitIdle(TimeSpan.FromSeconds(10)));
+
+        var jobs = queue.Jobs;
+        Assert.Equal(DeleteJob.ErrorProtected, jobs[0].Error);
+        Assert.Equal(DeleteJob.ErrorChanged, jobs[1].Error);
+        Assert.Equal(DeleteState.Done, jobs[2].State);
+        Assert.Equal([same], fake.Order); // the deleter was never called for the other two
+    }
+
+    [Fact]
     public void PausedQueueKeepsItemsUntilResumedOrCancelled()
     {
         var fake = new SlowFakeDeleter();

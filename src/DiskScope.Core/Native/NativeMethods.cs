@@ -47,6 +47,24 @@ internal static unsafe partial class NativeMethods
     [return: MarshalAs(UnmanagedType.Bool)]
     public static partial bool SetFilePointerEx(SafeFileHandle file, long distance, out long newPosition, uint moveMethod);
 
+    [LibraryImport("kernel32.dll", EntryPoint = "GetFinalPathNameByHandleW", SetLastError = true)]
+    public static partial uint GetFinalPathNameByHandle(SafeFileHandle file, char* path, uint length, uint flags);
+
+    /// <summary>The real path of an existing file or folder, with junctions and symbolic links on the way resolved.</summary>
+    public static string? FinalPath(string path)
+    {
+        const uint FILE_READ_ATTRIBUTES = 0x80;
+        using var handle = CreateFile(path.StartsWith(@"\\", StringComparison.Ordinal) ? path : @"\\?\" + path,
+            FILE_READ_ATTRIBUTES, FILE_SHARE_ALL, 0, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, 0);
+        if (handle.IsInvalid) return null;
+        var buffer = new char[32768];
+        fixed (char* p = buffer)
+        {
+            uint length = GetFinalPathNameByHandle(handle, p, (uint)buffer.Length, 0);
+            return length == 0 || length >= buffer.Length ? null : new string(buffer, 0, (int)length);
+        }
+    }
+
     // --- privileges ---
 
     const uint TOKEN_ADJUST_PRIVILEGES = 0x20;

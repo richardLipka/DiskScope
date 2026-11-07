@@ -17,7 +17,7 @@ sealed partial class MainForm
 
     void BuildDeleteQueue()
     {
-        _queue.JobChanged += job => BeginInvoke(() => OnJobChanged(job));
+        _queue.JobChanged += job => PostToUi(() => OnJobChanged(job));
         _queuePanel.Dock = DockStyle.Fill;
         _queuePanel.Cancelled += jobs =>
         {
@@ -40,7 +40,18 @@ sealed partial class MainForm
     {
         var store = _rows!.Store;
         var method = permanent ? DeleteMethod.Permanent : DeleteMethod.RecycleBin;
-        var jobs = nodes.Select(n => new DeleteJob(store.GetPath(n), store[n].IsDirectory, store[n].Size, method) { Store = store, Node = n }).ToList();
+        var jobs = nodes.Select(n =>
+        {
+            ref var e = ref store[n];
+            // Files are checked against their scanned size and time before deletion (hard-link entries carry no size).
+            bool check = !e.IsDirectory && (e.Flags & NodeFlags.HardLink) == 0;
+            return new DeleteJob(store.GetPath(n), e.IsDirectory, e.Size, method)
+            {
+                Store = store, Node = n,
+                ExpectedLength = check ? e.Length : null,
+                ExpectedMTime = check ? e.MTime : null,
+            };
+        }).ToList();
         foreach (int n in nodes) store.SetFlag(n, NodeFlags.Queued);
         _queue.Enqueue(jobs);
         foreach (var job in jobs) _queuePanel.Update(job);

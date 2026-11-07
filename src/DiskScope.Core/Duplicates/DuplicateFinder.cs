@@ -221,8 +221,12 @@ public sealed class DuplicateFinder
 
     const int FileIdInfo = 18;
 
+    static long _unknownIds;
+
     static (ulong, UInt128) FileId(SafeFileHandle handle) =>
         GetFileInformationByHandleEx(handle, FileIdInfo, out var info, Marshal.SizeOf<FILE_ID_INFO>())
             ? (info.VolumeSerialNumber, new UInt128(info.FileIdHigh, info.FileIdLow))
-            : (0, (UInt128)handle.DangerousGetHandle()); // unknown: treat every file as distinct
+            // Unknown (some file systems): a fresh value, so every such file counts as distinct. Handle values are
+            // reused after closing and would make unrelated files look like one.
+            : (ulong.MaxValue, (UInt128)(ulong)Interlocked.Increment(ref _unknownIds));
 }

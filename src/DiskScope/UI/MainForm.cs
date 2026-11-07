@@ -137,7 +137,8 @@ sealed partial class MainForm : Form
     {
         // Widths are kept in 96-DPI units so they survive moving between monitors.
         int[] widths = [400, 95, 140, 95, 90, 80, 135, 135];
-        if (_settings.ColumnWidths is { Length: 8 } saved) widths = saved;
+        // A hand-edited or damaged settings file must not make columns vanish.
+        if (_settings.ColumnWidths is { Length: 8 } saved) widths = saved.Select(w => Math.Clamp(w, 30, 2000)).ToArray();
         foreach (int w in widths) _tree.Columns.Add("", LogicalToDeviceUnits(w), HorizontalAlignment.Right);
         _tree.Columns[0].TextAlign = HorizontalAlignment.Left;
         _tree.Columns[(int)Col.Percent].TextAlign = HorizontalAlignment.Center;
@@ -235,11 +236,28 @@ sealed partial class MainForm : Form
         _settings.LastPath = path;
         _loaded = null;
         _session = new ScanSession(path);
-        _session.Finished += s => BeginInvoke(() => OnScanFinished(s));
+        _session.Finished += s => PostToUi(() => OnScanFinished(s));
         _session.Start();
         ShowStore(_session.Store);
         _timer.Start();
         UpdateButtons();
+    }
+
+    /// <summary>
+    /// Runs an action on the UI thread from a background thread. After the window has closed (a scan cancelled on
+    /// close, a delete finishing late) the action is dropped instead of failing on the background thread.
+    /// </summary>
+    void PostToUi(Action action)
+    {
+        if (IsDisposed || !IsHandleCreated) return;
+        try
+        {
+            BeginInvoke(action);
+        }
+        catch (InvalidOperationException)
+        {
+            // The handle went away between the check and the call.
+        }
     }
 
     void ShowStore(NodeStore store)

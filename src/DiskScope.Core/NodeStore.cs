@@ -81,6 +81,15 @@ public sealed class NodeStore
     long _namePos;
     int _version;
 
+    /// <summary>
+    /// Whether a name is a single path component: not empty, not "." or "..", no separators, no colon (which would
+    /// address an alternate stream or a drive) and no control characters. Names from saved scans and from raw MFT
+    /// data are checked with this, because paths for deleting are built from them.
+    /// </summary>
+    public static bool IsValidName(ReadOnlySpan<char> name) =>
+        name.Length > 0 && !name.SequenceEqual(".") && !name.SequenceEqual("..") &&
+        name.IndexOfAny('\\', '/', ':') < 0 && name.IndexOfAnyInRange('\0', '\x1f') < 0;
+
     public int Count => Volatile.Read(ref _count);
 
     /// <summary>Incremented whenever the visible tree changes; the UI uses it to decide when to refresh.</summary>

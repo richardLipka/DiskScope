@@ -95,6 +95,8 @@ sealed class DeleteQueuePanel : UserControl
         item.SubItems[2].Text = L.T(job.Method == DeleteMethod.RecycleBin ? "QueueToBin" : "QueuePermanent");
         item.SubItems[3].Text = job.State switch
         {
+            DeleteState.Failed when job.Error == DeleteJob.ErrorProtected => L.T("QueueStateProtected"),
+            DeleteState.Failed when job.Error == DeleteJob.ErrorChanged => L.T("QueueStateChanged"),
             DeleteState.Failed when job.FailedEntries > 0 => L.T("QueueStateFailedPartly", job.FailedEntries, job.Error ?? ""),
             DeleteState.Failed => L.T("QueueStateFailed", job.Error ?? ""),
             _ => L.T("QueueState" + job.State),

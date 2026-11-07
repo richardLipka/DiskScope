@@ -73,7 +73,19 @@ public sealed unsafe class DirectoryScanner : IScanner
                     _available.Wait();
                     if (_finished) return;
                     if (!_work.TryPop(out var item)) continue;
-                    if (!cancel.IsCancellationRequested) ListDirectory(item, buffer);
+                    if (!cancel.IsCancellationRequested)
+                    {
+                        try
+                        {
+                            ListDirectory(item, buffer);
+                        }
+                        catch (Exception)
+                        {
+                            // One unreadable folder must not end the scan (or the process): it is shown as an error.
+                            store.SetFlag(item.Node, NodeFlags.Error | NodeFlags.Scanned);
+                            Interlocked.Increment(ref progress.Errors);
+                        }
+                    }
                     if (Interlocked.Decrement(ref _pending) == 0)
                     {
                         _finished = true;

@@ -1,10 +1,43 @@
+#if DEBUG
 using DiskScope.Core;
 
 namespace DiskScope.UI;
 
-/// <summary>Lets automated checks run the real UI: scan, act, save a screenshot or a report, quit.</summary>
+/// <summary>
+/// Lets automated checks run the real UI: scan, act, save a screenshot or a report, quit. Debug builds only.
+/// Command line, all run after the scan (or after the last saved scan is opened) and then exit:
+///   --screenshot file.png [--expand levels] [--menu]                    captures the window (with the context menu open)
+///   --data-manager file.png                                             captures the saved-data window
+///   --scan folder --compare-test file.png                               compares with the previous saved scan, captures
+///   --search-test file.png                                              opens the search panel (largest files), captures
+///   --ai-prompt path --out file.txt                                     writes the AI question for a path
+///   --cleanup-test file.png [--cleanup-mark]                            opens the cleanup panel (selects caches), captures
+///   --orphan-test file.png                                              opens the abandoned-data panel, captures
+///   --scan folder --duplicate-test file.png [--duplicate-folder path]   searches duplicates (in a folder), captures
+///   --map-test file.png                                                 opens the treemap, captures
+///   --scan folder --queue-test file.png                                 queues items in a paused queue, captures, cancels
+///   --delete-test report.txt                                            deletes test items and writes a report
+/// </summary>
 static class TestHooks
 {
+    public static void Install(MainForm form, string[] args, bool scanning)
+    {
+        string? Arg(string name) => Program.Arg(args, name);
+        if (Arg("--screenshot") is string shot)
+            CaptureAfterScan(form, shot, int.TryParse(Arg("--expand"), out int levels) ? levels : 0, args.Contains("--menu"), afterLoad: !scanning);
+        if (Arg("--compare-test") is string cmpShot)
+            CaptureCompare(form, cmpShot, int.TryParse(Arg("--expand"), out int cmpLevels) ? cmpLevels : 0);
+        if (Arg("--search-test") is string searchShot) CaptureSearch(form, searchShot);
+        if (Arg("--map-test") is string mapShot) CaptureMap(form, mapShot);
+        if (Arg("--duplicate-test") is string dupShot) CaptureDuplicates(form, dupShot, Arg("--duplicate-folder"));
+        if (Arg("--orphan-test") is string orphanShot) CaptureOrphans(form, orphanShot);
+        if (Arg("--queue-test") is string queueShot) CaptureQueue(form, queueShot);
+        if (Arg("--cleanup-test") is string cleanupShot) CaptureCleanup(form, cleanupShot, args.Contains("--cleanup-mark"));
+        if (Arg("--ai-prompt") is string aiPath && Arg("--out") is string aiOut) WriteAiPrompt(form, aiPath, aiOut);
+        if (Arg("--data-manager") is string dmShot) CaptureDataManager(form, dmShot);
+        if (Arg("--delete-test") is string report) RunDeleteTest(form, report);
+    }
+
     public static void CaptureAfterScan(MainForm form, string file, int expandLevels, bool withMenu, bool afterLoad)
     {
         Action capture = () =>
@@ -231,3 +264,4 @@ static class TestHooks
         bmp.Save(file, System.Drawing.Imaging.ImageFormat.Png);
     }
 }
+#endif

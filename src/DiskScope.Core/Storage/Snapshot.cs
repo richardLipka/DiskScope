@@ -161,7 +161,9 @@ public static class Snapshot
             ushort encodedLen = (ushort)r.Read7BitEncodedInt();
             int nameBytes = encodedLen & 0x7FFF;
             r.BaseStream.ReadExactly(nameBuf, 0, nameBytes);
-            var flags = (NodeFlags)r.Read7BitEncodedInt();
+            CheckName(nameBuf.AsSpan(0, nameBytes), (encodedLen & 0x8000) != 0, isRoot: parent == NodeStore.None);
+            // Only flags describing the item are kept; state flags (deleted, queued) never come from a file.
+            var flags = (NodeFlags)r.Read7BitEncodedInt() & PersistentFlags;
             uint attrs = (uint)r.Read7BitEncodedInt();
             long mtime = r.ReadInt64();
             long atime = version >= 2 ? r.ReadInt64() : 0;
@@ -173,6 +175,7 @@ public static class Snapshot
             {
                 size = r.Read7BitEncodedInt64();
                 length = r.Read7BitEncodedInt64();
+                if (size < 0 || length < 0) throw new InvalidDataException("Negative file size in snapshot.");
             }
 
             int node = store.AddRaw(parent, nameBuf.AsSpan(0, nameBytes), encodedLen, flags, attrs, size, length, mtime, atime);
@@ -195,5 +198,19 @@ public static class Snapshot
 
         store.RecomputeTotals();
         return store;
+    }
+
+    const NodeFlags PersistentFlags = NodeFlags.Directory | NodeFlags.Scanned | NodeFlags.Error | NodeFlags.Reparse | NodeFlags.HardLink;
+
+    /// <summary>
+    /// Rejects names that are not a single path component, so that a crafted snapshot cannot make the paths built
+    /// from it (for opening or deleting) point outside the tree it shows. The root must be a full path.
+    /// </summary>
+    static void CheckName(ReadOnlySpan<byte> raw, bool utf16, bool isRoot)
+    {
+        if (utf16 && raw.Length % 2 != 0) throw new InvalidDataException("Broken name in snapshot.");
+        string name = utf16 ? new string(System.Runtime.InteropServices.MemoryMarshal.Cast<byte, char>(raw)) : Encoding.Latin1.GetString(raw);
+        bool ok = isRoot ? Path.IsPathFullyQualified(name) && !name.Contains("..") : NodeStore.IsValidName(name);
+        if (!ok) throw new InvalidDataException($"Invalid name in snapshot: \"{name}\".");
     }
 }

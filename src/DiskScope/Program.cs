@@ -4,60 +4,46 @@ namespace DiskScope;
 
 static class Program
 {
-    /// <summary>
-    /// Command line: [--path folder] [--scan folder] [--lang cs|en]
-    /// Test hooks, run after the scan and then exit:
-    ///   --screenshot file.png [--expand levels] [--menu]   captures the window (with the context menu open);
-    ///                                                       without --scan, after the last saved scan is opened
-    ///   --data-manager file.png                             captures the saved-data window
-    ///   --scan folder --compare-test file.png               compares with the previous saved scan, captures
-    ///   --search-test file.png                              opens the search panel (largest files), captures
-    ///   --ai-prompt path --out file.txt                     writes the AI question for a path
-    ///   --cleanup-test file.png [--cleanup-mark]            opens the cleanup panel (selects re-downloadable caches), captures
-    ///   --orphan-test file.png                              opens the abandoned-data panel, captures
-    ///   --scan folder --duplicate-test file.png [--duplicate-folder path]   searches duplicates (in a folder), captures
-    ///   --map-test file.png                                 opens the treemap, captures
-    ///   --scan folder --queue-test file.png                 queues items in a paused queue, captures, cancels
-    ///   --delete-test report.txt                            deletes test items and writes a report
-    /// </summary>
+    /// <summary>Command line: [--path folder] [--scan folder] [--lang cs|en]</summary>
     [STAThread]
     static void Main(string[] args)
     {
         ApplicationConfiguration.Initialize();
-        var settings = AppSettings.Load();
-        string? Arg(string name)
-        {
-            int i = Array.IndexOf(args, name);
-            return i >= 0 && i + 1 < args.Length ? args[i + 1] : null;
-        }
+        Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
+        Application.ThreadException += (_, e) => ReportError(e.Exception, fatal: false);
+        AppDomain.CurrentDomain.UnhandledException += (_, e) => ReportError(e.ExceptionObject as Exception, fatal: true);
 
-        L.Lang = Arg("--lang") ?? settings.Language;
-        string? scan = Arg("--scan") is string s ? Core.ExplorerIntegration.FixPathArgument(s) : null;
-        string? path = Arg("--path") is string p ? Core.ExplorerIntegration.FixPathArgument(p) : null;
+        var settings = AppSettings.Load();
+        L.Lang = Arg(args, "--lang") ?? settings.Language;
+        string? scan = Arg(args, "--scan") is string s ? Core.ExplorerIntegration.FixPathArgument(s) : null;
+        string? path = Arg(args, "--path") is string p ? Core.ExplorerIntegration.FixPathArgument(p) : null;
         var form = new MainForm(settings, scan ?? path, autoScan: scan != null);
-        if (Arg("--screenshot") is string shot)
-            TestHooks.CaptureAfterScan(form, shot, int.TryParse(Arg("--expand"), out int levels) ? levels : 0,
-                args.Contains("--menu"), afterLoad: scan == null);
-        if (Arg("--compare-test") is string cmpShot)
-            TestHooks.CaptureCompare(form, cmpShot, int.TryParse(Arg("--expand"), out int cmpLevels) ? cmpLevels : 0);
-        if (Arg("--search-test") is string searchShot)
-            TestHooks.CaptureSearch(form, searchShot);
-        if (Arg("--map-test") is string mapShot)
-            TestHooks.CaptureMap(form, mapShot);
-        if (Arg("--duplicate-test") is string dupShot)
-            TestHooks.CaptureDuplicates(form, dupShot, Arg("--duplicate-folder"));
-        if (Arg("--orphan-test") is string orphanShot)
-            TestHooks.CaptureOrphans(form, orphanShot);
-        if (Arg("--queue-test") is string queueShot)
-            TestHooks.CaptureQueue(form, queueShot);
-        if (Arg("--cleanup-test") is string cleanupShot)
-            TestHooks.CaptureCleanup(form, cleanupShot, args.Contains("--cleanup-mark"));
-        if (Arg("--ai-prompt") is string aiPath && Arg("--out") is string aiOut)
-            TestHooks.WriteAiPrompt(form, aiPath, aiOut);
-        if (Arg("--data-manager") is string dmShot)
-            TestHooks.CaptureDataManager(form, dmShot);
-        if (Arg("--delete-test") is string report)
-            TestHooks.RunDeleteTest(form, report);
+#if DEBUG
+        // Test hooks can delete files and write anywhere, so release builds do not contain them.
+        TestHooks.Install(form, args, scan != null);
+#endif
         Application.Run(form);
+    }
+
+    internal static string? Arg(string[] args, string name)
+    {
+        int i = Array.IndexOf(args, name);
+        return i >= 0 && i + 1 < args.Length ? args[i + 1] : null;
+    }
+
+    /// <summary>Logs an unexpected error to data\error.log and tells the user, instead of the process just vanishing.</summary>
+    static void ReportError(Exception? ex, bool fatal)
+    {
+        try
+        {
+            Directory.CreateDirectory(AppPaths.DataDir);
+            File.AppendAllText(Path.Combine(AppPaths.DataDir, "error.log"), $"{DateTime.Now:O} {(fatal ? "FATAL" : "ERROR")} {ex}{Environment.NewLine}");
+        }
+        catch
+        {
+            // Nothing more can be done if even the log cannot be written.
+        }
+        MessageBox.Show(L.T(fatal ? "ErrorFatal" : "ErrorUnexpected", ex?.Message ?? "?", Path.Combine(AppPaths.DataDir, "error.log")),
+            "DiskScope", MessageBoxButtons.OK, MessageBoxIcon.Error);
     }
 }

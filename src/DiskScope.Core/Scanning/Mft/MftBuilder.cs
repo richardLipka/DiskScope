@@ -69,6 +69,9 @@ internal sealed class MftBuilder
 
     void CollectName(in MftName name)
     {
+        // Raw MFT data may hold names Windows itself never creates ("..", with backslashes); a damaged or crafted
+        // volume must not make paths built from the tree point elsewhere, so such names are dropped.
+        if (!NodeStore.IsValidName(name.Name)) return;
         if (_nameUsed + name.Name.Length > _nameChars.Length) Array.Resize(ref _nameChars, _nameChars.Length * 2 + name.Name.Length);
         name.Name.CopyTo(_nameChars.AsSpan(_nameUsed));
         _names.Add((name.ParentRecord, _nameUsed, name.Name.Length));

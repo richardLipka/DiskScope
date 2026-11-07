@@ -41,6 +41,25 @@ public class LocalizationTests
         Assert.Empty(DefinedKeys().Except(complete));
     }
 
+    static readonly Regex Placeholder = new(@"\{(\d+)\}");
+
+    /// <summary>A placeholder missing in one language, or a stray brace, would make string.Format throw at run time.</summary>
+    [Fact]
+    public void BothLanguagesUseTheSamePlaceholders()
+    {
+        var problems = new List<string>();
+        foreach (Match m in Definition.Matches(StringsFile))
+        {
+            string cs = m.Groups["cs"].Value, en = m.Groups["en"].Value;
+            var a = Placeholder.Matches(cs).Select(x => x.Value).ToHashSet();
+            var b = Placeholder.Matches(en).Select(x => x.Value).ToHashSet();
+            if (!a.SetEquals(b)) problems.Add(m.Groups["key"].Value + ": placeholders differ");
+            foreach (string text in new[] { cs, en })
+                if (Placeholder.Replace(text, "").IndexOfAny(['{', '}']) >= 0) problems.Add(m.Groups["key"].Value + ": stray brace");
+        }
+        Assert.Empty(problems);
+    }
+
     [Fact]
     public void EveryUsedKeyExists()
     {

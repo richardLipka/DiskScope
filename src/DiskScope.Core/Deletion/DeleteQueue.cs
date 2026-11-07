@@ -24,6 +24,14 @@ public sealed class DeleteJob(string path, bool isDirectory, long size, DeleteMe
     public NodeStore? Store { get; init; }
     public int Node { get; init; } = NodeStore.None;
 
+    /// <summary>For a file: its size and last write time (FILETIME) when scanned. A file that differs now is not deleted.</summary>
+    public long? ExpectedLength { get; init; }
+    public long? ExpectedMTime { get; init; }
+
+    /// <summary><see cref="Error"/> values the UI translates.</summary>
+    public const string ErrorProtected = "#protected";
+    public const string ErrorChanged = "#changed";
+
     public bool Finished => State is DeleteState.Done or DeleteState.Failed or DeleteState.Cancelled;
 }
 
@@ -41,9 +49,12 @@ public sealed class DeleteQueue : IDisposable
     readonly Thread _worker;
     volatile bool _paused;
 
-    public DeleteQueue(IFileDeleter deleter)
+    readonly DeletionGuard _guard;
+
+    public DeleteQueue(IFileDeleter deleter, DeletionGuard? guard = null)
     {
         _deleter = deleter;
+        _guard = guard ?? new DeletionGuard();
         _worker = new Thread(Run) { IsBackground = true, Name = "DeleteQueue" };
         // The shell's recycle-bin operation wants a single-threaded apartment.
         _worker.SetApartmentState(ApartmentState.STA);
@@ -129,6 +140,16 @@ public sealed class DeleteQueue : IDisposable
             JobChanged?.Invoke(job);
             try
             {
+                if (_guard.CheckResolved(job.Path) != DeletionGuard.Verdict.Allowed)
+                {
+                    Fail(job, DeleteJob.ErrorProtected);
+                    continue;
+                }
+                if (!IsUnchanged(job))
+                {
+                    Fail(job, DeleteJob.ErrorChanged);
+                    continue;
+                }
                 var result = _deleter.Delete(job.Path, job.IsDirectory, job.Method, token);
                 job.FailedEntries = result.FailedEntries;
                 job.Error = result.Error;
@@ -146,6 +167,25 @@ public sealed class DeleteQueue : IDisposable
             }
             JobChanged?.Invoke(job);
         }
+    }
+
+    void Fail(DeleteJob job, string error)
+    {
+        job.Error = error;
+        job.State = DeleteState.Failed;
+        JobChanged?.Invoke(job);
+    }
+
+    /// <summary>
+    /// A file is deleted only if it still has the size and write time it had when scanned: the tree may be an old
+    /// saved scan, and a different file may now live at the same path.
+    /// </summary>
+    static bool IsUnchanged(DeleteJob job)
+    {
+        if (job.IsDirectory || job.ExpectedLength is not long length) return true;
+        var info = new FileInfo(job.Path);
+        if (!info.Exists) return true; // already gone: nothing will be deleted
+        return info.Length == length && (job.ExpectedMTime is not long mtime || mtime == 0 || info.LastWriteTimeUtc.ToFileTimeUtc() == mtime);
     }
 
     public void Dispose()
