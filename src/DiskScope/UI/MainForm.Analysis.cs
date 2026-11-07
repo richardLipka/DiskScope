@@ -9,31 +9,45 @@ sealed partial class MainForm
     readonly ToolStripMenuItem _orphanItem = new();
     readonly TabPage _orphanTab = new();
     readonly OrphanPanel _orphans = new() { Dock = DockStyle.Fill };
+    readonly ToolStripMenuItem _duplicateItem = new();
+    readonly TabPage _duplicateTab = new();
+    readonly DuplicatePanel _duplicates = new() { Dock = DockStyle.Fill };
 
     void BuildAnalysis()
     {
-        _analysisMenu.DropDownItems.Add(_orphanItem);
+        _analysisMenu.DropDownItems.AddRange([_orphanItem, _duplicateItem]);
         _orphanItem.Click += (_, _) => ShowBottom(_orphanTab);
         _orphanTab.Controls.Add(_orphans);
-        _bottomTabs.TabPages.Add(_orphanTab);
         _orphans.Catalog = () => _cleanup.Catalog;
         _orphans.RevealRequested += RevealInTree;
         _orphans.ResultMenu = BuildNodeListMenu(() => _orphans.SelectedNodes(), () => _orphans.FocusedNode);
+
+        _duplicateItem.Click += (_, _) => ShowBottom(_duplicateTab);
+        _duplicateTab.Controls.Add(_duplicates);
+        _duplicates.CurrentFolder = () => _rows?.ViewRoot ?? NodeStore.None;
+        _duplicates.RevealRequested += RevealInTree;
+        _duplicates.ResultMenu = BuildNodeListMenu(() => _duplicates.SelectedNodes(), () => _duplicates.FocusedNode);
+
+        _bottomTabs.TabPages.AddRange([_orphanTab, _duplicateTab]);
     }
 
     void ApplyAnalysisTexts()
     {
         _analysisMenu.Text = "📊 " + L.T("Analyses");
-        _orphanItem.Text = L.T("OrphanTab");
-        _orphanTab.Text = L.T("OrphanTab");
+        _orphanItem.Text = _orphanTab.Text = L.T("OrphanTab");
+        _duplicateItem.Text = L.T("DupItem");
+        _duplicateTab.Text = L.T("DupTab");
         _orphans.ApplyTexts();
+        _duplicates.ApplyTexts();
     }
 
     void SetAnalysisStore(NodeStore store)
     {
         _orphans.SetStore(store);
+        _duplicates.SetStore(store);
     }
 
+    /// <summary>Fills a panel when it is shown; duplicates are searched only on request.</summary>
     void RefreshAnalysisTab(TabPage? tab)
     {
         if (tab == _orphanTab) _orphans.Run();
@@ -42,6 +56,7 @@ sealed partial class MainForm
     void RefreshAnalysisAfterChange()
     {
         if (BottomVisible(_orphanTab)) _orphans.RemoveDead();
+        else if (BottomVisible(_duplicateTab)) _duplicates.RemoveDead();
     }
 
     /// <summary>The usual actions for a list of tree nodes: show, open, Explorer, copy, AI question, delete.</summary>
@@ -83,6 +98,8 @@ sealed partial class MainForm
         return menu;
     }
 
+    internal DuplicatePanel DuplicatePanelForTest => _duplicates;
+    internal void ShowDuplicatesForTest() => ShowBottom(_duplicateTab);
     internal OrphanPanel OrphanPanelForTest => _orphans;
     internal void ShowOrphansForTest() => ShowBottom(_orphanTab);
 }

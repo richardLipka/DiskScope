@@ -15,6 +15,7 @@ static class Program
     ///   --ai-prompt path --out file.txt                     writes the AI question for a path
     ///   --cleanup-test file.png                             opens the cleanup panel, captures
     ///   --orphan-test file.png                              opens the abandoned-data panel, captures
+    ///   --scan folder --duplicate-test file.png             searches duplicates, captures
     ///   --scan folder --queue-test file.png                 queues items in a paused queue, captures, cancels
     ///   --delete-test report.txt                            deletes test items and writes a report
     /// </summary>
@@ -40,6 +41,8 @@ static class Program
             TestHooks.CaptureCompare(form, cmpShot, int.TryParse(Arg("--expand"), out int cmpLevels) ? cmpLevels : 0);
         if (Arg("--search-test") is string searchShot)
             TestHooks.CaptureSearch(form, searchShot);
+        if (Arg("--duplicate-test") is string dupShot)
+            TestHooks.CaptureDuplicates(form, dupShot);
         if (Arg("--orphan-test") is string orphanShot)
             TestHooks.CaptureOrphans(form, orphanShot);
         if (Arg("--queue-test") is string queueShot)

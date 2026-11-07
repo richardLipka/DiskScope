@@ -64,6 +64,21 @@ static class TestHooks
         };
     }
 
+    /// <summary>After the scan, opens the duplicates panel, runs the search, captures the result, quits.</summary>
+    public static void CaptureDuplicates(MainForm form, string file)
+    {
+        form.ScanCompleted += () =>
+        {
+            form.ShowDuplicatesForTest();
+            form.DuplicatePanelForTest.Start();
+        };
+        form.DuplicatePanelForTest.Finished += () => After(800, () =>
+        {
+            Capture(form, file);
+            form.Close();
+        });
+    }
+
     /// <summary>When the tree is ready, opens the abandoned-data panel, captures it, quits.</summary>
     public static void CaptureOrphans(MainForm form, string file)
     {
