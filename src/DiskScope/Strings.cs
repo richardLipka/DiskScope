@@ -285,6 +285,18 @@ static class L
         ["DupSummary"] = ("Nalezeno {0} skupin stejných souborů · smazáním kopií se uvolní {1}",
                           "Found {0} groups of identical files · deleting the copies frees {1}"),
         ["DupGroup"] = ("{0}× {1} – kopie zabírají {2}", "{0}× {1} – copies take {2}"),
+        ["MapTab"] = ("Mapa", "Map"),
+        ["MapTitle"] = ("{0} – {1} · plocha odpovídá velikosti na disku · klik vybere ve stromu · dvojklik otevře složku",
+                        "{0} – {1} · area is size on disk · click selects in the tree · double-click opens a folder"),
+        ["KindVideo"] = ("video", "video"),
+        ["KindImage"] = ("obrázky", "images"),
+        ["KindAudio"] = ("zvuk", "audio"),
+        ["KindArchive"] = ("archivy", "archives"),
+        ["KindDiskImage"] = ("obrazy disků", "disk images"),
+        ["KindProgram"] = ("programy a knihovny", "programs and libraries"),
+        ["KindDocument"] = ("dokumenty", "documents"),
+        ["KindCode"] = ("kód a data", "code and data"),
+        ["KindOther"] = ("ostatní", "other"),
         ["ConfirmStopScan"] = ("Sken stále běží. Opravdu ho zastavit?", "A scan is still running. Stop it?"),
     };
 }

@@ -69,6 +69,7 @@ public class LocalizationTests
         foreach (string c in new[] { "Likely", "Possible" }) used.Add($"Orphan{c}");
         foreach (string k in new[] { "StoreApp", "ProgramFiles", "AppData", "ProgramData" }) used.UnionWith([$"OrphanKind{k}", $"OrphanWhy{k}"]);
         foreach (string s in new[] { "Waiting", "Running", "Done", "Cancelled" }) used.Add($"QueueState{s}");
+        foreach (string k in new[] { "Video", "Image", "Audio", "Archive", "DiskImage", "Program", "Document", "Code", "Other" }) used.Add($"Kind{k}");
 
         Assert.True(used.Count > 100);
         Assert.Empty(used.Except(DefinedKeys()));

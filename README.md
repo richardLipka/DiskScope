@@ -19,8 +19,18 @@ velikosti všech složek a umožní rychle najít, kde zabírají místo velké 
   za desítky sekund. Pevné odkazy (hardlinky) se započítají jen jednou. Bez práv správce nebo na jiném
   souborovém systému se automaticky použije procházení složek.
 - Junctions a symbolické odkazy se nenásledují (nic se nezapočítá dvakrát), cloudové soubory OneDrive se nestahují.
-- **Mazání** do koše nebo trvale, zobrazení v Průzkumníku, otevření výchozí aplikací, kopírování cesty,
-  nový sken složky a plné kontextové menu Windows (Shift + pravé tlačítko).
+- **Mazání přes frontu**: smazané položky se řadí do fronty a mažou se jedna po druhé na pozadí, bez
+  dialogů Windows. Můžete dál pracovat a přidávat další. Panel Mazání ukazuje stav každé položky a umí
+  frontu pozastavit nebo zrušit. Trvalé mazání přeskočí zamčené soubory a nikdy nenásleduje junction.
+- Zobrazení v Průzkumníku, otevření výchozí aplikací, kopírování cesty, nový sken složky a plné
+  kontextové menu Windows (Shift + pravé tlačítko).
+- **Analýzy**:
+  - *Opuštěná data*: složky v AppData, ProgramData a Program Files, ke kterým nepatří žádný nainstalovaný
+    program, a data odinstalovaných aplikací ze Store.
+  - *Duplicity* (na vyžádání): soubory se stejným obsahem. Porovnává se velikost, pak začátek a konec
+    souboru, nakonec celý obsah. Hardlinky se nehlásí, soubory jen v cloudu se nestahují.
+  - *Mapa* (treemap): plocha odpovídá velikosti, barva typu souboru.
+- **Položka „Analyzovat v DiskScope“** v kontextové nabídce Průzkumníku (volitelně, v nabídce ⚙).
 - **Ukládání skenů**: dokončené skeny se ukládají a při dalším spuštění se poslední hned otevře. V okně
   Uložená data jde každý sken nebo všechny najednou smazat.
 - **Porovnání se starším skenem**: sloupec Změna, řazení podle přírůstku, filtr „jen narostlé“.
@@ -84,8 +94,18 @@ of all folders and lets you quickly find where large files and folders take up s
   a whole drive in tens of seconds. Hard links are counted once. Without administrator rights or on other
   file systems, folder enumeration is used automatically.
 - Junctions and symbolic links are not followed (nothing is counted twice); OneDrive cloud files are not downloaded.
-- **Delete** to the Recycle Bin or permanently, show in Explorer, open with the default app, copy path,
-  rescan a folder and the full Windows context menu (Shift + right-click).
+- **Deleting through a queue**: deleted items queue up and are deleted one by one in the background, without
+  Windows dialogs; keep working and keep adding. The Deleting panel shows each item's state and can pause or
+  cancel. Permanent deletion skips locked files and never follows junctions.
+- Show in Explorer, open with the default app, copy path, rescan a folder and the full Windows context menu
+  (Shift + right-click).
+- **Analyses**:
+  - *Abandoned data*: folders in AppData, ProgramData and Program Files that no installed program accounts
+    for, and data of uninstalled Store apps.
+  - *Duplicates* (on request): files with the same content, compared by size, then beginning and end, then
+    the whole content. Hard links are not reported, cloud-only files are not downloaded.
+  - *Map* (treemap): area is size, color is file type.
+- **"Analyze in DiskScope"** entry in Explorer's context menu (optional, in the ⚙ menu).
 - **Saved scans**: finished scans are saved and the last one opens instantly on the next start. The Saved
   data window deletes any or all of them.
 - **Compare with an earlier scan**: a Change column, sorting by growth and an "only grown" filter show

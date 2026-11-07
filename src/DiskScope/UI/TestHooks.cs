@@ -64,6 +64,19 @@ static class TestHooks
         };
     }
 
+    /// <summary>When the tree is ready, opens the map of the root, captures it, quits.</summary>
+    public static void CaptureMap(MainForm form, string file)
+    {
+        Action open = () => form.ShowMapForTest();
+        form.ScanCompleted += open;
+        form.SnapshotLoaded += open;
+        form.MapPanelForTest.Shown += () => After(1000, () =>
+        {
+            Capture(form, file);
+            form.Close();
+        });
+    }
+
     /// <summary>After the scan, opens the duplicates panel, runs the search, captures the result, quits.</summary>
     public static void CaptureDuplicates(MainForm form, string file)
     {

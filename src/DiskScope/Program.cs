@@ -16,6 +16,7 @@ static class Program
     ///   --cleanup-test file.png                             opens the cleanup panel, captures
     ///   --orphan-test file.png                              opens the abandoned-data panel, captures
     ///   --scan folder --duplicate-test file.png             searches duplicates, captures
+    ///   --map-test file.png                                 opens the treemap, captures
     ///   --scan folder --queue-test file.png                 queues items in a paused queue, captures, cancels
     ///   --delete-test report.txt                            deletes test items and writes a report
     /// </summary>
@@ -41,6 +42,8 @@ static class Program
             TestHooks.CaptureCompare(form, cmpShot, int.TryParse(Arg("--expand"), out int cmpLevels) ? cmpLevels : 0);
         if (Arg("--search-test") is string searchShot)
             TestHooks.CaptureSearch(form, searchShot);
+        if (Arg("--map-test") is string mapShot)
+            TestHooks.CaptureMap(form, mapShot);
         if (Arg("--duplicate-test") is string dupShot)
             TestHooks.CaptureDuplicates(form, dupShot);
         if (Arg("--orphan-test") is string orphanShot)
