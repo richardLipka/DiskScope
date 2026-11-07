@@ -46,6 +46,7 @@ sealed partial class MainForm : Form
 
         BuildToolbar();
         BuildColumns();
+        BuildMenu();
         _detail.Height = LogicalToDeviceUnits(26);
         _detail.BackColor = SystemColors.Window;
         _statusBar.Items.AddRange([_status, _progress, _mode]);
@@ -70,6 +71,15 @@ sealed partial class MainForm : Form
         {
             if (autoScan) StartScan();
         };
+    }
+
+    internal NodeStore? Store => _rows?.Store;
+
+    internal void ShowMenuAtFocused()
+    {
+        if (_tree.FocusedItem == null) return;
+        var r = _tree.GetItemRect(_tree.FocusedItem.Index);
+        _menu.Show(_tree, new Point(r.X + LogicalToDeviceUnits(200), r.Bottom));
     }
 
     /// <summary>Expands the largest child repeatedly, a given number of levels deep.</summary>
@@ -137,6 +147,7 @@ sealed partial class MainForm : Form
         string[] cols = ["ColName", "ColOnDisk", "ColPercent", "ColSize", "ColFiles", "ColFolders", "ColModified", "ColDelta"];
         for (int i = 0; i < _tree.Columns.Count; i++) _tree.Columns[i].Text = L.T(cols[i]);
         _tree.UpdateSortIcon();
+        ApplyMenuTexts();
         string? selected = SelectedTarget;
         FillTargets();
         if (selected != null) SelectTarget(selected);
@@ -200,7 +211,7 @@ sealed partial class MainForm : Form
     void StartScan()
     {
         string? path = SelectedTarget;
-        if (path == null || IsScanning) return;
+        if (path == null || IsBusy) return;
         _settings.LastPath = path;
         _session = new ScanSession(path);
         _session.Finished += s => BeginInvoke(() => OnScanFinished(s));
@@ -247,10 +258,10 @@ sealed partial class MainForm : Form
 
     void UpdateButtons()
     {
-        _scan.Enabled = !IsScanning;
+        _scan.Enabled = !IsBusy;
         _stop.Enabled = IsScanning;
-        _target.Enabled = !IsScanning;
-        _browse.Enabled = !IsScanning;
+        _target.Enabled = !IsBusy;
+        _browse.Enabled = !IsBusy;
     }
 
     void UpdateStatus()
@@ -356,22 +367,6 @@ sealed partial class MainForm : Form
         }
         _breadcrumb.ResumeLayout();
         _up.Enabled = _rows != null && _rows.Store.Root != NodeStore.None && _rows.ViewRoot != _rows.Store.Root;
-    }
-
-    // --- file actions ---
-
-    void OpenFile(int node)
-    {
-        if (_rows == null) return;
-        string path = _rows.Store.GetPath(node);
-        try
-        {
-            Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
-        }
-        catch (Exception ex)
-        {
-            MessageBox.Show(this, ex.Message, Text, MessageBoxButtons.OK, MessageBoxIcon.Warning);
-        }
     }
 
     void RestartElevated()

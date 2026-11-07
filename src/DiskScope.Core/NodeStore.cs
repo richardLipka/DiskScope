@@ -253,8 +253,38 @@ public sealed class NodeStore
         int dirs = n.IsDirectory ? n.DirCount + 1 : 0;
         AddToAncestors(parent, -n.Size, -n.Length, -files, -dirs);
         n.Flags |= NodeFlags.Deleted;
+        MarkDescendantsDeleted(index);
         MarkChanged();
     }
+
+    /// <summary>
+    /// Drops a directory's contents and zeroes its totals so it can be scanned again.
+    /// Must not run concurrently with a scan.
+    /// </summary>
+    public void ClearChildren(int dir)
+    {
+        ref var n = ref this[dir];
+        MarkDescendantsDeleted(dir);
+        AddToAncestors(dir, -n.Size, -n.Length, -n.FileCount, -n.DirCount);
+        n.FirstChild = None;
+        n.Flags &= ~(NodeFlags.Scanned | NodeFlags.Error);
+        MarkChanged();
+    }
+
+    void MarkDescendantsDeleted(int index)
+    {
+        var stack = new Stack<int>();
+        stack.Push(index);
+        while (stack.Count > 0)
+            for (int c = this[stack.Pop()].FirstChild; c != None; c = this[c].NextSibling)
+            {
+                this[c].Flags |= NodeFlags.Deleted;
+                if (this[c].IsDirectory) stack.Push(c);
+            }
+    }
+
+    /// <summary>True when the node is in the tree (neither it nor an ancestor has been removed).</summary>
+    public bool IsLive(int index) => (this[index].Flags & (NodeFlags.Used | NodeFlags.Deleted)) == NodeFlags.Used;
 
     int Allocate()
     {

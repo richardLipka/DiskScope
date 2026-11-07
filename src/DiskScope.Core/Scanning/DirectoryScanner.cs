@@ -27,6 +27,13 @@ public sealed unsafe class DirectoryScanner : IScanner
         new Run(store, progress, cancel, _threads).Execute(store.Root, rootPath);
     }
 
+    /// <summary>Scans a directory again: its old contents are dropped and re-listed.</summary>
+    public void Rescan(NodeStore store, int dir, ScanProgress progress, CancellationToken cancel)
+    {
+        store.ClearChildren(dir);
+        new Run(store, progress, cancel, _threads).Execute(dir, store.GetPath(dir));
+    }
+
     readonly record struct WorkItem(int Node, string Path);
 
     sealed class Run(NodeStore store, ScanProgress progress, CancellationToken cancel, int threads)
