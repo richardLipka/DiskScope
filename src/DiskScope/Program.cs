@@ -15,7 +15,7 @@ static class Program
     ///   --ai-prompt path --out file.txt                     writes the AI question for a path
     ///   --cleanup-test file.png                             opens the cleanup panel, captures
     ///   --orphan-test file.png                              opens the abandoned-data panel, captures
-    ///   --scan folder --duplicate-test file.png             searches duplicates, captures
+    ///   --scan folder --duplicate-test file.png [--duplicate-folder path]   searches duplicates (in a folder), captures
     ///   --map-test file.png                                 opens the treemap, captures
     ///   --scan folder --queue-test file.png                 queues items in a paused queue, captures, cancels
     ///   --delete-test report.txt                            deletes test items and writes a report
@@ -45,7 +45,7 @@ static class Program
         if (Arg("--map-test") is string mapShot)
             TestHooks.CaptureMap(form, mapShot);
         if (Arg("--duplicate-test") is string dupShot)
-            TestHooks.CaptureDuplicates(form, dupShot);
+            TestHooks.CaptureDuplicates(form, dupShot, Arg("--duplicate-folder"));
         if (Arg("--orphan-test") is string orphanShot)
             TestHooks.CaptureOrphans(form, orphanShot);
         if (Arg("--queue-test") is string queueShot)

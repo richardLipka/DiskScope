@@ -46,11 +46,32 @@ sealed partial class MainForm
 
         _duplicateItem.Click += (_, _) => ShowBottom(_duplicateTab);
         _duplicateTab.Controls.Add(_duplicates);
-        _duplicates.CurrentFolder = () => _rows?.ViewRoot ?? NodeStore.None;
+        _duplicates.SelectedFolder = SelectedTreeFolder;
+        _tree.SelectedIndexChanged += (_, _) =>
+        {
+            if (BottomVisible(_duplicateTab)) _duplicates.UpdateFolder();
+        };
         _duplicates.RevealRequested += RevealInTree;
         _duplicates.ResultMenu = BuildNodeListMenu(() => _duplicates.SelectedNodes(), () => _duplicates.FocusedNode);
 
         _bottomTabs.TabPages.AddRange([_orphanTab, _duplicateTab, _mapTab]);
+    }
+
+    /// <summary>The folder selected in the tree, or the folder of the selected file; the view root when nothing is selected.</summary>
+    int SelectedTreeFolder()
+    {
+        if (_rows == null) return NodeStore.None;
+        int node = _tree.FocusedNode;
+        if (node == NodeStore.None) return _rows.ViewRoot;
+        return _rows.Store[node].IsDirectory ? node : _rows.Store[node].Parent;
+    }
+
+    /// <summary>Opens the duplicates panel and searches the given folder with its subfolders.</summary>
+    void FindDuplicatesIn(int folder)
+    {
+        if (_rows == null || folder == NodeStore.None) return;
+        ShowBottom(_duplicateTab);
+        _duplicates.StartIn(folder);
     }
 
     bool _selectingFromMap;
@@ -89,6 +110,7 @@ sealed partial class MainForm
     void RefreshAnalysisTab(TabPage? tab)
     {
         if (tab == _orphanTab) _orphans.Run();
+        else if (tab == _duplicateTab) _duplicates.UpdateFolder();
         else if (tab == _mapTab && _rows != null)
         {
             int node = _tree.FocusedNode;
@@ -100,6 +122,7 @@ sealed partial class MainForm
     {
         if (BottomVisible(_orphanTab)) _orphans.RemoveDead();
         else if (BottomVisible(_duplicateTab)) _duplicates.RemoveDead();
+        if (BottomVisible(_duplicateTab)) _duplicates.UpdateFolder();
         else if (BottomVisible(_mapTab)) _map.Relayout();
     }
 
@@ -145,6 +168,16 @@ sealed partial class MainForm
     internal TreemapPanel MapPanelForTest => _map;
     internal void ShowMapForTest() => ShowBottom(_mapTab);
     internal DuplicatePanel DuplicatePanelForTest => _duplicates;
+
+    /// <summary>Test hook: selects the folder in the tree and searches it, as the tree's context menu does.</summary>
+    internal void FindDuplicatesInForTest(string path)
+    {
+        if (_rows?.Store.FindPath(path) is int node && node != NodeStore.None)
+        {
+            _tree.SelectNode(node);
+            FindDuplicatesIn(SelectedTreeFolder());
+        }
+    }
     internal void ShowDuplicatesForTest() => ShowBottom(_duplicateTab);
     internal OrphanPanel OrphanPanelForTest => _orphans;
     internal void ShowOrphansForTest() => ShowBottom(_orphanTab);

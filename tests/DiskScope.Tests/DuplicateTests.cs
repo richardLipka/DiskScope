@@ -75,6 +75,32 @@ public class DuplicateTests
     }
 
     [Fact]
+    public void ChecksActualSizesBeforeReadingContent()
+    {
+        using var t = new TestTree();
+        var data = Content(300_000, 6);
+        Write(t, "a.bin", data);
+        Write(t, "b.bin", data);
+        string grown = Write(t, "c.bin", data);
+        string gone = Write(t, "d.bin", data);
+        string other = Write(t, "e.bin", Content(300_000, 7));
+        var store = Scan(t.Root);
+
+        // After the scan: one file grows, one disappears, one keeps its size.
+        File.AppendAllText(grown, "more");
+        File.Delete(gone);
+        var progress = new DuplicateProgress();
+        var groups = new DuplicateFinder { MinSize = 1 }.Find(store, progress);
+
+        Assert.Equal(1, progress.SizeGroups);
+        Assert.Equal(3, progress.SizeFiles);       // a, b and e still have the scanned size; c and d dropped out
+        Assert.Equal(3 * 300_000L, progress.SizeBytes);
+        Assert.Single(groups);
+        Assert.Equal(["a.bin", "b.bin"], groups[0].Nodes.Select(store.GetName).Order());
+        Assert.True(File.Exists(other));
+    }
+
+    [Fact]
     public void RespectsScope()
     {
         using var t = new TestTree();

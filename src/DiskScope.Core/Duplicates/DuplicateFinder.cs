@@ -13,6 +13,7 @@ public sealed record DuplicateGroup(long Size, List<int> Nodes)
 public enum DuplicateStage
 {
     Collecting,
+    Sizing,
     Sampling,
     Hashing,
     Done,
@@ -26,12 +27,18 @@ public sealed class DuplicateProgress
     public long FilesDone;
     public long BytesTotal;
     public long BytesDone;
+
+    /// <summary>Result of the size pass: files whose actual size matches another file's, before any content is read.</summary>
+    public long SizeGroups;
+    public long SizeFiles;
+    public long SizeBytes;
 }
 
 /// <summary>
-/// Finds files with the same content in three passes, each cheaper than the next: equal size, equal hash of the
-/// first and last 64 KB, equal hash of the whole file. Hard links (one file under several names) are recognised
-/// by file ID and not reported; cloud-only files are skipped so that nothing gets downloaded.
+/// Finds files with the same content, each pass cheaper than the next and run only on what the previous one left:
+/// equal size in the scan, equal actual size on disk now (files changed or deleted since the scan drop out),
+/// equal hash of the first and last 64 KB, equal hash of the whole file. Hard links (one file under several names)
+/// are recognised by file ID and not reported; cloud-only files are skipped so that nothing gets downloaded.
 /// </summary>
 public sealed class DuplicateFinder
 {
@@ -47,20 +54,37 @@ public sealed class DuplicateFinder
     {
         progress.Stage = DuplicateStage.Collecting;
         var bySize = CollectBySize(store, cancel);
-
-        // Pass 2: same size and same sample (first and last 64 KB); also drops hard links of one file.
-        var candidates = bySize.Where(g => g.Count > 1).ToList();
-        progress.Stage = DuplicateStage.Sampling;
-        progress.FilesTotal = candidates.Sum(g => g.Count);
-        var sampled = new List<List<FileEntry>>();
         var options = new ParallelOptions { MaxDegreeOfParallelism = Parallelism, CancellationToken = cancel };
         object sync = new();
+
+        // Pass 2: the actual size on disk now, without opening the files. Only files whose size in the scan matched
+        // another file's are checked; they are regrouped by what the disk says.
+        var scanned = bySize.Where(g => g.Count > 1).SelectMany(g => g).ToList();
+        progress.Stage = DuplicateStage.Sizing;
+        progress.FilesTotal = scanned.Count;
+        var actual = new Dictionary<int, long>();
+        Parallel.ForEach(scanned, options, node =>
+        {
+            if (ActualSize(store.GetPath(node)) is long size && size >= MinSize)
+                lock (sync) actual[node] = size;
+            Interlocked.Increment(ref progress.FilesDone);
+        });
+        var candidates = actual.GroupBy(x => x.Value, x => x.Key).Where(g => g.Count() > 1).Select(g => g.ToList()).ToList();
+        progress.SizeGroups = candidates.Count;
+        progress.SizeFiles = candidates.Sum(g => g.Count);
+        progress.SizeBytes = candidates.Sum(g => g.Count * actual[g[0]]);
+
+        // Pass 3: same sample (first and last 64 KB); also drops hard links of one file.
+        progress.Stage = DuplicateStage.Sampling;
+        progress.FilesDone = 0;
+        progress.FilesTotal = progress.SizeFiles;
+        var sampled = new List<List<FileEntry>>();
         Parallel.ForEach(candidates, options, group =>
         {
             var entries = new List<FileEntry>();
             foreach (int node in group)
             {
-                if (Read(store.GetPath(node), store[node].Length, sampleOnly: true) is FileEntry e) entries.Add(e with { Node = node });
+                if (Read(store.GetPath(node), actual[node], sampleOnly: true) is FileEntry e) entries.Add(e with { Node = node });
                 Interlocked.Increment(ref progress.FilesDone);
             }
             var unique = entries.GroupBy(e => e.FileId).Select(g => g.First()); // hard links of one file count once
@@ -68,15 +92,15 @@ public sealed class DuplicateFinder
                 lock (sync) sampled.Add(same.ToList());
         });
 
-        // Pass 3: whole-file hash, only where the sample could not tell (larger than the two samples).
+        // Pass 4: whole-file hash, only where the sample could not tell (larger than the two samples).
         progress.Stage = DuplicateStage.Hashing;
         progress.FilesDone = 0;
         progress.FilesTotal = sampled.Sum(g => g.Count);
-        progress.BytesTotal = sampled.Sum(g => g.Sum(e => store[e.Node].Length));
+        progress.BytesTotal = sampled.Sum(g => g.Sum(e => actual[e.Node]));
         var result = new List<DuplicateGroup>();
         Parallel.ForEach(sampled, options, group =>
         {
-            long size = store[group[0].Node].Length;
+            long size = actual[group[0].Node];
             IEnumerable<IGrouping<string, int>> same;
             if (size <= 2 * SampleSize)
             {
@@ -127,6 +151,21 @@ public sealed class DuplicateFinder
         for (int p = store[node].Parent; p != NodeStore.None; p = store[p].Parent)
             if (p == scope) return true;
         return false;
+    }
+
+    /// <summary>The file's current size, or null when it is gone, unreadable or only in the cloud.</summary>
+    static long? ActualSize(string path)
+    {
+        try
+        {
+            var info = new FileInfo(path);
+            if (!info.Exists || ((uint)info.Attributes & CloudOrOffline) != 0) return null;
+            return info.Length;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
     }
 
     readonly record struct FileEntry(int Node, (ulong Volume, UInt128 Id) FileId, string Hash);

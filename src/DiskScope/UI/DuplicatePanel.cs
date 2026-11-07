@@ -11,7 +11,8 @@ sealed class DuplicatePanel : UserControl
     static readonly long[] MinSizes = [1L << 20, 10L << 20, 100L << 20, 1L << 30];
 
     readonly ComboBox _minSize = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 120 };
-    readonly CheckBox _inView = new() { AutoSize = true };
+    readonly ComboBox _scope = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 290 };
+    readonly Label _folder = new() { AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(3, 8, 3, 2), ForeColor = SystemColors.GrayText };
     readonly Button _start = new() { AutoSize = true };
     readonly Button _markCopies = new() { AutoSize = true, Enabled = false };
     readonly Label _summary = new() { AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(3, 8, 12, 2) };
@@ -28,9 +29,13 @@ sealed class DuplicatePanel : UserControl
     CancellationTokenSource? _cancel;
     DuplicateProgress? _progress;
     List<DuplicateGroup> _groups = [];
+    int _searchedFolder = NodeStore.None;
 
+    /// <summary>The folder selected in the tree (a file's folder when a file is selected).</summary>
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
-    public Func<int>? CurrentFolder { get; set; }
+    public Func<int>? SelectedFolder { get; set; }
+
+    bool InFolder => _scope.SelectedIndex == 1;
 
     public event Action<int>? RevealRequested;
 
@@ -46,8 +51,10 @@ sealed class DuplicatePanel : UserControl
 
     public DuplicatePanel()
     {
-        _bar.Controls.AddRange([_minSize, _inView, _start, _markCopies, _progressBar, _summary]);
+        _bar.Controls.AddRange([_scope, _folder, _minSize, _start, _markCopies, _progressBar, _summary]);
         foreach (Control c in _bar.Controls) c.Margin = new Padding(3, 4, 3, 2);
+        _bar.SetFlowBreak(_folder, true);
+        _scope.SelectedIndexChanged += (_, _) => UpdateFolder();
         Controls.Add(_list);
         Controls.Add(_bar);
         foreach (var w in new[] { 300, 95, 140, 640 }) _list.Columns.Add("", w);
@@ -72,6 +79,7 @@ sealed class DuplicatePanel : UserControl
         base.OnHandleCreated(e);
         foreach (ColumnHeader c in _list.Columns) c.Width = LogicalToDeviceUnits(c.Width);
         _minSize.Width = LogicalToDeviceUnits(_minSize.Width);
+        _scope.Width = LogicalToDeviceUnits(_scope.Width);
         _progressBar.Width = LogicalToDeviceUnits(_progressBar.Width);
     }
 
@@ -81,7 +89,11 @@ sealed class DuplicatePanel : UserControl
         _minSize.Items.Clear();
         _minSize.Items.AddRange(MinSizes.Select(s => "≥ " + Format.Size(s, L.Culture)).ToArray<object>());
         _minSize.SelectedIndex = selected;
-        _inView.Text = L.T("OnlyInView");
+        int scope = Math.Max(0, _scope.SelectedIndex);
+        _scope.Items.Clear();
+        _scope.Items.AddRange([L.T("DupScopeAll"), L.T("DupScopeFolder")]);
+        _scope.SelectedIndex = scope;
+        UpdateFolder();
         _start.Text = L.T(_cancel != null ? "Stop" : "DupStart");
         _markCopies.Text = L.T("DupMarkCopies");
         string[] cols = ["ColName", "ColOnDisk", "ColModified", "ColFolder"];
@@ -101,19 +113,43 @@ sealed class DuplicatePanel : UserControl
         _summary.Text = L.T("DupHint");
     }
 
+    /// <summary>Shows which folder a search would cover; called when the tree selection changes.</summary>
+    public void UpdateFolder()
+    {
+        if (_store == null || _store.Root == NodeStore.None)
+        {
+            _folder.Text = "";
+            return;
+        }
+        int folder = InFolder ? SelectedFolder?.Invoke() ?? NodeStore.None : _store.Root;
+        _folder.Text = folder == NodeStore.None ? "" : L.T("DupScopePath", _store.GetPath(folder));
+    }
+
+    /// <summary>Searches one folder and its subfolders (from the tree's context menu).</summary>
+    public void StartIn(int folder)
+    {
+        if (_cancel != null) return;
+        _scope.SelectedIndex = 1;
+        Start(folder);
+    }
+
     public int FocusedNode => _list.FocusedItem?.Tag is int n ? n : SelectedNodes().FirstOrDefault(NodeStore.None);
 
     public List<int> SelectedNodes() => _list.SelectedItems.Cast<ListViewItem>().Select(i => (int)i.Tag!).ToList();
 
-    /// <summary>Starts the search; public for the test hooks.</summary>
-    public async void Start()
+    /// <summary>Starts the search in the chosen scope; public for the test hooks.</summary>
+    public void Start() => Start(InFolder ? SelectedFolder?.Invoke() ?? NodeStore.None : NodeStore.None);
+
+    async void Start(int folder)
     {
         if (_store == null || _store.Root == NodeStore.None || _cancel != null) return;
         var store = _store;
+        _searchedFolder = folder == NodeStore.None ? store.Root : folder;
+        _folder.Text = L.T("DupScopePath", store.GetPath(_searchedFolder));
         var finder = new DuplicateFinder
         {
             MinSize = MinSizes[Math.Max(0, _minSize.SelectedIndex)],
-            Scope = _inView.Checked && CurrentFolder != null ? CurrentFolder() : NodeStore.None,
+            Scope = folder,
         };
         var cancel = _cancel = new CancellationTokenSource();
         _progress = new DuplicateProgress();
@@ -152,17 +188,26 @@ sealed class DuplicatePanel : UserControl
                 _summary.Text = L.T("DupCollecting");
                 _progressBar.Style = ProgressBarStyle.Marquee;
                 break;
+            case DuplicateStage.Sizing:
+                _summary.Text = L.T("DupSizing", Format.Count(p.FilesDone, L.Culture), Format.Count(p.FilesTotal, L.Culture));
+                SetBar(p.FilesDone, p.FilesTotal);
+                break;
             case DuplicateStage.Sampling:
-                _summary.Text = L.T("DupSampling", Format.Count(p.FilesDone, L.Culture), Format.Count(p.FilesTotal, L.Culture));
+                _summary.Text = SizeCandidates(p) + " · " +
+                                L.T("DupSampling", Format.Count(p.FilesDone, L.Culture), Format.Count(p.FilesTotal, L.Culture));
                 SetBar(p.FilesDone, p.FilesTotal);
                 break;
             case DuplicateStage.Hashing:
-                _summary.Text = L.T("DupHashing", Format.Count(p.FilesDone, L.Culture), Format.Count(p.FilesTotal, L.Culture),
-                    Format.Size(p.BytesDone, L.Culture), Format.Size(p.BytesTotal, L.Culture));
+                _summary.Text = SizeCandidates(p) + " · " +
+                                L.T("DupHashing", Format.Count(p.FilesDone, L.Culture), Format.Count(p.FilesTotal, L.Culture),
+                                    Format.Size(p.BytesDone, L.Culture), Format.Size(p.BytesTotal, L.Culture));
                 SetBar(p.BytesDone, p.BytesTotal);
                 break;
         }
     }
+
+    static string SizeCandidates(DuplicateProgress p) =>
+        L.T("DupSizeCandidates", Format.Count(p.SizeFiles, L.Culture), Format.Count(p.SizeGroups, L.Culture), Format.Size(p.SizeBytes, L.Culture));
 
     void SetBar(long done, long total)
     {
@@ -193,7 +238,9 @@ sealed class DuplicatePanel : UserControl
         }
         _list.EndUpdate();
         long wasted = _groups.Sum(g => g.Size * (g.Nodes.Count(store.IsLive) - 1));
-        _summary.Text = _groups.Count == 0 ? L.T("DupNone") : L.T("DupSummary", Format.Count(_groups.Count, L.Culture), Format.Size(wasted, L.Culture));
+        // Show what the size pass found first, then what the content comparison confirmed.
+        string sizes = _progress is { Stage: DuplicateStage.Done } p ? SizeCandidates(p) + " → " : "";
+        _summary.Text = sizes + (_groups.Count == 0 ? L.T("DupNone") : L.T("DupSummary", Format.Count(_groups.Count, L.Culture), Format.Size(wasted, L.Culture)));
         _markCopies.Enabled = _groups.Count > 0;
     }
 

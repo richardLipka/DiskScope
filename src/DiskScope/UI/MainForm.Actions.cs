@@ -16,19 +16,21 @@ sealed partial class MainForm
     readonly ToolStripMenuItem _miDelete = new() { ShortcutKeyDisplayString = "Shift+Del" };
     readonly ToolStripMenuItem _miWindows = new();
     readonly ToolStripMenuItem _miAi = new() { ShortcutKeyDisplayString = "Ctrl+Shift+C" };
+    readonly ToolStripMenuItem _miDuplicates = new();
     bool _rescanning;
 
     bool IsBusy => IsScanning || _rescanning || _saving || _loading;
 
     void BuildMenu()
     {
-        _menu.Items.AddRange([_miOpen, _miReveal, _miCopy, _miAi, _miRescan, new ToolStripSeparator(), _miRecycle, _miDelete,
+        _menu.Items.AddRange([_miOpen, _miReveal, _miCopy, _miAi, _miRescan, _miDuplicates, new ToolStripSeparator(), _miRecycle, _miDelete,
             new ToolStripSeparator(), _miWindows]);
         _miAi.Click += (_, _) => CopyAiPrompt(_tree.FocusedNode);
         _miOpen.Click += (_, _) => OpenSelected();
         _miReveal.Click += (_, _) => RevealSelected();
         _miCopy.Click += (_, _) => CopyPaths();
         _miRescan.Click += (_, _) => RescanSelected();
+        _miDuplicates.Click += (_, _) => FindDuplicatesIn(SelectedTreeFolder());
         _miRecycle.Click += (_, _) => DeleteSelected(permanent: false);
         _miDelete.Click += (_, _) => DeleteSelected(permanent: true);
         _miWindows.Click += (_, _) => ShowWindowsMenu(_menuPoint, extended: false);
@@ -51,6 +53,7 @@ sealed partial class MainForm
             bool isRoot = nodes.Contains(_rows.Store.Root);
             _miOpen.Enabled = _miAi.Enabled = single;
             _miRescan.Enabled = single && _rows.Store[nodes[0]].IsDirectory && !IsBusy;
+            _miDuplicates.Enabled = single && _rows.Store[nodes[0]].IsDirectory;
             _miRecycle.Enabled = _miDelete.Enabled = !isRoot && !IsBusy;
             _miWindows.Enabled = !IsBusy;
         };
@@ -78,6 +81,7 @@ sealed partial class MainForm
         _miDelete.Text = L.T("DeletePermanent");
         _miWindows.Text = L.T("WindowsMenu") + "  (Shift+…)";
         _miAi.Text = L.T("CopyAiPrompt");
+        _miDuplicates.Text = L.T("DupInFolder");
     }
 
     void CopyAiPrompt(int node)

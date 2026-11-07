@@ -78,12 +78,16 @@ static class TestHooks
     }
 
     /// <summary>After the scan, opens the duplicates panel, runs the search, captures the result, quits.</summary>
-    public static void CaptureDuplicates(MainForm form, string file)
+    public static void CaptureDuplicates(MainForm form, string file, string? folder)
     {
         form.ScanCompleted += () =>
         {
-            form.ShowDuplicatesForTest();
-            form.DuplicatePanelForTest.Start();
+            if (folder != null) form.FindDuplicatesInForTest(folder);
+            else
+            {
+                form.ShowDuplicatesForTest();
+                form.DuplicatePanelForTest.Start();
+            }
         };
         form.DuplicatePanelForTest.Finished += () => After(800, () =>
         {
