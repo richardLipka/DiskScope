@@ -187,6 +187,10 @@ sealed class SearchPanel : UserControl
         catch (OperationCanceledException)
         {
         }
+        catch (Exception ex)
+        {
+            if (!IsDisposed) _summary.Text = L.T("AnalysisFailed", ex is AggregateException ae ? ae.InnerException?.Message ?? ex.Message : ex.Message);
+        }
     }
 
     /// <summary>Raised when results are shown; used by the test hooks.</summary>

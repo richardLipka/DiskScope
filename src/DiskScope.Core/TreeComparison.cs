@@ -26,10 +26,25 @@ public sealed class TreeComparison
     public int Match(int node)
     {
         if (_match.TryGetValue(node, out int m)) return m;
-        int parent = _current[node].Parent;
-        int baseParent = parent == NodeStore.None ? NodeStore.None : Match(parent);
-        m = baseParent == NodeStore.None || !Baseline[baseParent].IsDirectory ? NodeStore.None : FindChild(baseParent, _current.GetName(node));
-        _match[node] = m;
+        // Walk up to the nearest ancestor already matched, then resolve back down. Iterative, so a very deep tree
+        // cannot overflow the stack.
+        var chain = new Stack<int>();
+        m = NodeStore.None; // no matched ancestor at all (cannot happen while the root is cached): new
+        for (int i = node; i != NodeStore.None; i = _current[i].Parent)
+        {
+            if (_match.TryGetValue(i, out int found))
+            {
+                m = found;
+                break;
+            }
+            chain.Push(i);
+        }
+        while (chain.Count > 0)
+        {
+            int n = chain.Pop();
+            m = m == NodeStore.None || !Baseline[m].IsDirectory ? NodeStore.None : FindChild(m, _current.GetName(n));
+            _match[n] = m;
+        }
         return m;
     }
 

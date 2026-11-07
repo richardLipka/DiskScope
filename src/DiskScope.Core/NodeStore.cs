@@ -436,6 +436,34 @@ public sealed class NodeStore
         MarkChanged();
     }
 
+    /// <summary>
+    /// Marks as deleted every node that cannot be reached from the root. Raw MFT data can contain parent cycles
+    /// (A inside B inside A); such nodes are not in the tree, and walking up from them would never end.
+    /// Returns how many were dropped.
+    /// </summary>
+    internal int DropUnreachable()
+    {
+        var reached = new bool[Count];
+        var stack = new Stack<int>();
+        stack.Push(Root);
+        reached[Root] = true;
+        while (stack.Count > 0)
+            for (int c = this[stack.Pop()].FirstChild; c != None; c = this[c].NextSibling)
+                if (!reached[c])
+                {
+                    reached[c] = true;
+                    stack.Push(c);
+                }
+        int dropped = 0;
+        for (int i = 0; i < reached.Length; i++)
+            if (!reached[i] && (this[i].Flags & (NodeFlags.Used | NodeFlags.Deleted)) == NodeFlags.Used)
+            {
+                this[i].Flags |= NodeFlags.Deleted;
+                dropped++;
+            }
+        return dropped;
+    }
+
     /// <summary>Discards everything but the root, including nodes not yet linked into the tree.</summary>
     internal void ResetToRoot()
     {

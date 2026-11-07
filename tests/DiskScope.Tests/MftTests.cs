@@ -229,6 +229,77 @@ public class MftTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public void ParentCyclesAreDroppedSoNothingLoops()
+    {
+        var store = new NodeStore();
+        store.CreateRoot(@"T:\");
+        var builder = new MftBuilder(store, new ScanProgress(), 64);
+        var records = new Dictionary<uint, byte[]>
+        {
+            [5] = Record(5, true, StdInfo(1), FileName(5, ".")),
+            [40] = Record(40, true, StdInfo(1), FileName(41, "a")),     // a is inside b ...
+            [41] = Record(41, true, StdInfo(1), FileName(40, "b")),     // ... and b inside a
+            [42] = Record(42, false, StdInfo(1), FileName(40, "in-cycle.bin"), NonResidentData(4096, 4000)),
+            [43] = Record(43, false, StdInfo(1), FileName(5, "fine.bin"), NonResidentData(8192, 8000)),
+        };
+        foreach (var (n, rec) in records)
+            if (MftParser.ApplyFixup(rec.AsSpan())) builder.AddRecord(rec, n);
+        builder.Finish();
+
+        Assert.NotEqual(NodeStore.None, store.FindPath(@"T:\fine.bin"));
+        Assert.Equal(8192, store[store.Root].Size);
+        // The cycle is unreachable and dropped; searches and duplicate scans would otherwise walk up forever.
+        var task = Task.Run(() =>
+        {
+            Assert.Equal(["fine.bin"], Search.Run(store, new SearchQuery { MinSize = 1 }).Nodes.Select(store.GetName));
+            Assert.Empty(new DiskScope.Core.Duplicates.DuplicateFinder { MinSize = 1, Scope = store.FindPath(@"T:\fine.bin") }
+                .Find(store, new DiskScope.Core.Duplicates.DuplicateProgress()));
+        });
+        Assert.True(task.Wait(TimeSpan.FromSeconds(20)), "analysis hung on a parent cycle");
+    }
+
+    [Fact]
+    public void CorruptedRecordsNeverHangOrBreakTheTree()
+    {
+        var templates = new[]
+        {
+            Record(16, true, StdInfo(1), FileName(5, "Users")),
+            Record(17, false, StdInfo(2), FileName(16, "a.bin"), NonResidentData(8192, 5000, highestVcn: 1, runs: [0x11, 0x02, 0x10])),
+            Record(18, false, StdInfo(3), FileName(5, "h1", 0), FileName(16, "h2", 0), ResidentData(100)),
+            Record(19, false, 23, true, NonResidentData(1_000_000, 999_000, compressed: 4096)),
+        };
+        var random = new Random(12345);
+        int escaped = 0;
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        for (int round = 0; round < 50; round++)
+        {
+            var store = new NodeStore();
+            store.CreateRoot(@"T:\");
+            var builder = new MftBuilder(store, new ScanProgress(), 64);
+            for (int i = 0; i < 100; i++)
+            {
+                var rec = (byte[])templates[random.Next(templates.Length)].Clone();
+                for (int m = random.Next(1, 12); m > 0; m--) rec[random.Next(rec.Length)] = (byte)random.Next(256);
+                try
+                {
+                    // Managed exceptions are fine: the scan falls back to enumerating folders. Hangs and crashes are not.
+                    if (MftParser.ApplyFixup(rec.AsSpan())) builder.AddRecord(rec, (uint)(16 + random.Next(40)));
+                }
+                catch (Exception)
+                {
+                    escaped++;
+                }
+            }
+            builder.Finish();
+            // Whatever got in: every live node's path is finite and made of valid names.
+            for (int n = 0; n < store.Count; n++)
+                if (store.IsLive(n) && n != store.Root)
+                    Assert.All(store.GetPath(n)[3..].Split('\\'), part => Assert.True(NodeStore.IsValidName(part)));
+        }
+        Assert.True(clock.Elapsed < TimeSpan.FromSeconds(60));
+    }
+
+    [Fact]
     public void ScansRealVolumeWhenElevated()
     {
         string root = Path.GetPathRoot(Environment.SystemDirectory)!;

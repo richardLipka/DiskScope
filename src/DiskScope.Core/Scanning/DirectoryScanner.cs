@@ -30,6 +30,13 @@ public sealed unsafe class DirectoryScanner : IScanner
     /// <summary>Scans a directory again: its old contents are dropped and re-listed.</summary>
     public void Rescan(NodeStore store, int dir, ScanProgress progress, CancellationToken cancel)
     {
+        // Check first: clearing a folder that cannot be listed (disk gone, access lost) would only drop its contents
+        // from the tree.
+        string path = store.GetPath(dir);
+        using (var probe = CreateFile(path.StartsWith(@"\\", StringComparison.Ordinal) ? path : @"\\?\" + path,
+                   FILE_LIST_DIRECTORY, FILE_SHARE_ALL, 0, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, 0))
+            if (probe.IsInvalid)
+                throw new ScanSourceException(ScanSourceProblem.Unavailable);
         store.ClearChildren(dir);
         new Run(store, progress, cancel, _threads).Execute(dir, store.GetPath(dir));
     }

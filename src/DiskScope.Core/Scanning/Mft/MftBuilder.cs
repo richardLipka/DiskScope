@@ -99,6 +99,7 @@ internal sealed class MftBuilder
     {
         ApplyExtensions();
         Link();
+        _store.DropUnreachable();
         _store.ComputeTotalsFromRoot();
         _store.MarkChanged();
     }

@@ -17,12 +17,20 @@ namespace DiskScope.UI;
 ///   --map-test file.png                                                 opens the treemap, captures
 ///   --scan folder --queue-test file.png                                 queues items in a paused queue, captures, cancels
 ///   --delete-test report.txt [--delete-delay ms]                        deletes test items and writes a report
+///   --messages file.txt                                                 with any of the above: error messages shown, one per line
 /// </summary>
 static class TestHooks
 {
     public static void Install(MainForm form, string[] args, bool scanning)
     {
         string? Arg(string name) => Program.Arg(args, name);
+        // Dialogs would block an unattended run: collect their texts instead (written by --messages file.txt).
+        if (args.Any(a => a.StartsWith("--", StringComparison.Ordinal) && a.EndsWith("-test", StringComparison.Ordinal) || a == "--screenshot"))
+        {
+            form.TestMessages = [];
+            if (Arg("--messages") is string messages)
+                form.FormClosed += (_, _) => File.WriteAllLines(messages, form.TestMessages);
+        }
         if (Arg("--screenshot") is string shot)
             CaptureAfterScan(form, shot, int.TryParse(Arg("--expand"), out int levels) ? levels : 0, args.Contains("--menu"), afterLoad: !scanning);
         if (Arg("--compare-test") is string cmpShot)

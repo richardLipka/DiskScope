@@ -79,16 +79,27 @@ public sealed class TreeRows(NodeStore store)
         _depths.Clear();
         if (store.Root == NodeStore.None) return _previous.Count != 0;
         if (_viewRoot == NodeStore.None) ViewRoot = store.Root;
-        AddRow(ViewRoot, 0);
+        AddRows(ViewRoot);
         return !_nodes.SequenceEqual(_previous);
     }
 
-    void AddRow(int node, int depth)
+    /// <summary>
+    /// Adds a node and its expanded descendants in display order. Iterative: revealing an item in a very deep
+    /// folder expands every level above it, and a recursive walk could overflow the UI thread's stack.
+    /// </summary>
+    void AddRows(int root)
     {
-        _nodes.Add(node);
-        _depths.Add(depth);
-        if (!_expanded.Contains(node)) return;
-        foreach (int child in SortedChildren(node)) AddRow(child, depth + 1);
+        var stack = new Stack<(int Node, int Depth)>();
+        stack.Push((root, 0));
+        while (stack.Count > 0)
+        {
+            var (node, depth) = stack.Pop();
+            _nodes.Add(node);
+            _depths.Add(depth);
+            if (!_expanded.Contains(node)) continue;
+            var children = SortedChildren(node);
+            for (int i = children.Length - 1; i >= 0; i--) stack.Push((children[i], depth + 1));
+        }
     }
 
     public int[] SortedChildren(int node)

@@ -87,6 +87,10 @@ public sealed class ScanSession
                 _scanner = new DirectoryScanner();
                 _scanner.Scan(Store, RootPath, Progress, _cancel.Token);
             }
+            // A scan whose source failed must not look complete (it would be saved as such, and a later comparison
+            // would show everything as removed).
+            if ((Store[Store.Root].Flags & NodeFlags.Error) != 0) throw new ScanSourceException(ScanSourceProblem.RootUnreadable);
+            if (!Directory.Exists(RootPath)) throw new ScanSourceException(ScanSourceProblem.Unavailable);
             State = ScanState.Completed;
         }
         catch (OperationCanceledException)
@@ -104,6 +108,27 @@ public sealed class ScanSession
             Progress.CurrentPath = null;
             Store.MarkChanged();
         }
-        Finished?.Invoke(this);
+        try
+        {
+            Finished?.Invoke(this);
+        }
+        catch (Exception)
+        {
+            // A failing subscriber must not end the process from this background thread.
+        }
     }
+}
+
+public enum ScanSourceProblem
+{
+    /// <summary>The scanned folder or drive could not be listed at all (access denied, not ready).</summary>
+    RootUnreadable,
+    /// <summary>The drive or folder went away during the scan (unplugged, disconnected, deleted).</summary>
+    Unavailable,
+}
+
+/// <summary>The scan finished, but what it scanned failed, so its result is not a complete picture.</summary>
+public sealed class ScanSourceException(ScanSourceProblem problem) : IOException($"Scan source problem: {problem}")
+{
+    public ScanSourceProblem Problem { get; } = problem;
 }

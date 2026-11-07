@@ -218,8 +218,18 @@ sealed partial class MainForm
         {
             while (_rescanQueue.TryDequeue(out var next))
             {
+                if (IsDisposed) break;
                 if (next.Store != _rows?.Store || !next.Store.IsLive(next.Dir)) continue;
-                await Task.Run(() => new DirectoryScanner().Rescan(next.Store, next.Dir, new ScanProgress(), CancellationToken.None));
+                string path = next.Store.GetPath(next.Dir);
+                try
+                {
+                    await Task.Run(() => new DirectoryScanner().Rescan(next.Store, next.Dir, new ScanProgress(), CancellationToken.None));
+                }
+                catch (ScanSourceException)
+                {
+                    // The tree keeps what it had; the user learns why nothing changed.
+                    if (!IsDisposed) _status.Text = L.T("RescanUnavailable", path);
+                }
             }
         }
         finally

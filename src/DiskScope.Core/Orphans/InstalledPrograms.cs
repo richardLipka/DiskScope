@@ -20,13 +20,26 @@ public static class InstalledPrograms
         var list = new List<InstalledProgram>();
         foreach (var (hive, path) in UninstallKeys)
         {
-            using var root = hive.OpenSubKey(path);
-            if (root == null) continue;
-            foreach (string sub in root.GetSubKeyNames())
+            try
             {
-                using var key = root.OpenSubKey(sub);
-                if (key?.GetValue("DisplayName") is not string name || string.IsNullOrWhiteSpace(name)) continue;
-                list.Add(new InstalledProgram(name, key.GetValue("Publisher") as string, key.GetValue("InstallLocation") as string));
+                using var root = hive.OpenSubKey(path);
+                if (root == null) continue;
+                foreach (string sub in root.GetSubKeyNames())
+                {
+                    // One unreadable entry must not lose the whole list (a shorter list means more false "abandoned").
+                    try
+                    {
+                        using var key = root.OpenSubKey(sub);
+                        if (key?.GetValue("DisplayName") is not string name || string.IsNullOrWhiteSpace(name)) continue;
+                        list.Add(new InstalledProgram(name, key.GetValue("Publisher") as string, key.GetValue("InstallLocation") as string));
+                    }
+                    catch (Exception ex) when (ex is System.Security.SecurityException or UnauthorizedAccessException or IOException)
+                    {
+                    }
+                }
+            }
+            catch (Exception ex) when (ex is System.Security.SecurityException or UnauthorizedAccessException or IOException)
+            {
             }
         }
         return list;
@@ -38,10 +51,17 @@ public static class InstalledPrograms
     public static HashSet<string> ReadStoreFamilies()
     {
         var families = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        using var root = Registry.CurrentUser.OpenSubKey(PackageRepository);
-        if (root == null) return families;
-        foreach (string fullName in root.GetSubKeyNames())
-            if (FamilyName(fullName) is string family) families.Add(family);
+        try
+        {
+            using var root = Registry.CurrentUser.OpenSubKey(PackageRepository);
+            if (root == null) return families;
+            foreach (string fullName in root.GetSubKeyNames())
+                if (FamilyName(fullName) is string family) families.Add(family);
+        }
+        catch (Exception ex) when (ex is System.Security.SecurityException or UnauthorizedAccessException or IOException)
+        {
+            // An empty set makes the finder skip Store app data rather than call all of it abandoned.
+        }
         return families;
     }
 

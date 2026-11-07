@@ -97,13 +97,30 @@ sealed class OrphanPanel : UserControl
         var store = _store;
         var catalog = Catalog?.Invoke() ?? CleanupCatalog.Default();
         _summary.Text = L.T("Searching");
-        var (candidates, programs, families) = await Task.Run(() =>
+        List<OrphanCandidate> candidates;
+        List<InstalledProgram> programs;
+        HashSet<string> families;
+        try
         {
-            var programs = _programs ?? InstalledPrograms.Read();
-            var families = _families ?? InstalledPrograms.ReadStoreFamilies();
-            var known = CleanupFinder.Find(store, catalog).Select(m => m.Node);
-            return (new OrphanFinder().Find(store, programs, families, known, DateTime.UtcNow), programs, families);
-        });
+            (candidates, programs, families) = await Task.Run(() =>
+            {
+                var programs = _programs ?? InstalledPrograms.Read();
+                var families = _families ?? InstalledPrograms.ReadStoreFamilies();
+                // Without the list of installed programs every folder would look abandoned: refuse to guess.
+                if (programs.Count == 0) throw new InvalidOperationException(L.T("OrphanNoPrograms"));
+                var known = CleanupFinder.Find(store, catalog).Select(m => m.Node);
+                return (new OrphanFinder().Find(store, programs, families, known, DateTime.UtcNow), programs, families);
+            });
+        }
+        catch (Exception ex)
+        {
+            if (IsDisposed) return;
+            _list.Items.Clear();
+            _list.Groups.Clear();
+            _summary.Text = L.T("OrphanFailed", ex.Message);
+            Found?.Invoke();
+            return;
+        }
         if (IsDisposed || store != _store) return;
         _programs = programs;
         _families = families;

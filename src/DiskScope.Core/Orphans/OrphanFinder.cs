@@ -73,6 +73,13 @@ public sealed class OrphanFinder
         var result = new List<OrphanCandidate>();
         foreach (var (pattern, kind) in Locations)
         {
+            // Without the list of installed Store apps every Store app's data would look abandoned: skip them.
+            if (kind == OrphanKind.StoreApp && storeFamilies.Count == 0)
+            {
+                // Still mark the folders as seen, so the AppData pass below does not report them either.
+                foreach (int node in CleanupFinder.ResolvePath(store, CleanupFinder.ExpandPattern(pattern, expand))) seen.Add(node);
+                continue;
+            }
             foreach (int node in CleanupFinder.ResolvePath(store, CleanupFinder.ExpandPattern(pattern, expand)))
             {
                 if (!seen.Add(node) || !store.IsLive(node) || !store[node].IsDirectory) continue;

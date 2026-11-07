@@ -115,7 +115,16 @@ sealed class CleanupPanel : UserControl
         var store = _store;
         var catalog = _catalog;
         _summary.Text = L.T("Searching");
-        var matches = await Task.Run(() => CleanupFinder.Find(store, catalog));
+        List<CleanupMatch> matches;
+        try
+        {
+            matches = await Task.Run(() => CleanupFinder.Find(store, catalog));
+        }
+        catch (Exception ex)
+        {
+            if (!IsDisposed) _summary.Text = L.T("AnalysisFailed", ex.Message);
+            return;
+        }
         if (IsDisposed || store != _store) return;
         _matches = matches;
         Fill();

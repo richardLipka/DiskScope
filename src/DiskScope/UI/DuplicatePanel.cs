@@ -246,6 +246,8 @@ sealed class DuplicatePanel : UserControl
         // Show what the size pass found first, then what the content comparison confirmed.
         string sizes = _progress is { Stage: DuplicateStage.Done } p ? SizeCandidates(p) + " → " : "";
         _summary.Text = sizes + (_groups.Count == 0 ? L.T("DupNone") : L.T("DupSummary", Format.Count(_groups.Count, L.Culture), Format.Size(wasted, L.Culture)));
+        // Files that could not be read may hide duplicates: say so rather than present the result as complete.
+        if (_progress is { Unreadable: > 0 } u) _summary.Text += " · " + L.T("DupUnreadable", Format.Count(u.Unreadable, L.Culture));
         _markCopies.Enabled = _groups.Count > 0;
     }
 

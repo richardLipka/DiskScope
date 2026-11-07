@@ -131,11 +131,31 @@ public static class Snapshot
         if (!r.ReadBytes(4).AsSpan().SequenceEqual(Magic)) throw new InvalidDataException("Not a DiskScope snapshot.");
         version = r.ReadUInt16();
         if (version is < 1 or > FormatVersion) throw new InvalidDataException($"Unsupported snapshot version {version}.");
-        return new SnapshotInfo(filePath, r.ReadString(), new DateTime(r.ReadInt64(), DateTimeKind.Utc), new TimeSpan(r.ReadInt64()),
-            (ScanMode)r.ReadByte(), r.ReadBoolean(), r.ReadInt64(), r.ReadInt64(), r.ReadInt64(), r.ReadInt64(), r.ReadInt64(), r.ReadInt64());
+        try
+        {
+            return new SnapshotInfo(filePath, r.ReadString(), new DateTime(r.ReadInt64(), DateTimeKind.Utc), new TimeSpan(r.ReadInt64()),
+                (ScanMode)r.ReadByte(), r.ReadBoolean(), r.ReadInt64(), r.ReadInt64(), r.ReadInt64(), r.ReadInt64(), r.ReadInt64(), r.ReadInt64());
+        }
+        catch (ArgumentOutOfRangeException ex)
+        {
+            throw new InvalidDataException("Damaged snapshot header.", ex); // e.g. a date out of range
+        }
     }
 
+    /// <summary>Loads a saved scan. A damaged file fails with <see cref="InvalidDataException"/> (or an I/O error).</summary>
     public static NodeStore Load(string filePath, out SnapshotInfo info, Action<double>? progress = null, CancellationToken cancel = default)
+    {
+        try
+        {
+            return LoadCore(filePath, out info, progress, cancel);
+        }
+        catch (Exception ex) when (ex is ArgumentException or OverflowException or IndexOutOfRangeException or InvalidOperationException)
+        {
+            throw new InvalidDataException("Damaged snapshot: " + ex.Message, ex);
+        }
+    }
+
+    static NodeStore LoadCore(string filePath, out SnapshotInfo info, Action<double>? progress, CancellationToken cancel)
     {
         using var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 16);
         info = ReadHeader(fs, filePath, out ushort version);

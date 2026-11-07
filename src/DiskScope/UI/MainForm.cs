@@ -193,10 +193,17 @@ sealed partial class MainForm : Form
         if (_customFolder != null) _target.Items.Add(new Target(_customFolder, "📁 " + _customFolder));
         foreach (var d in DriveInfo.GetDrives())
         {
-            if (d.DriveType is not (DriveType.Fixed or DriveType.Removable) || !d.IsReady) continue;
-            string label = string.IsNullOrEmpty(d.VolumeLabel) ? L.T("LocalDisk") : d.VolumeLabel;
-            _target.Items.Add(new Target(d.RootDirectory.FullName, L.T("DriveItem", d.Name, label, d.DriveFormat,
-                Format.Size(d.AvailableFreeSpace, L.Culture), Format.Size(d.TotalSize, L.Culture))));
+            try
+            {
+                if (d.DriveType is not (DriveType.Fixed or DriveType.Removable) || !d.IsReady) continue;
+                string label = string.IsNullOrEmpty(d.VolumeLabel) ? L.T("LocalDisk") : d.VolumeLabel;
+                _target.Items.Add(new Target(d.RootDirectory.FullName, L.T("DriveItem", d.Name, label, d.DriveFormat,
+                    Format.Size(d.AvailableFreeSpace, L.Culture), Format.Size(d.TotalSize, L.Culture))));
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // The drive went away between IsReady and reading its details: leave it out of the list.
+            }
         }
         if (selected != null) SelectTarget(selected, refill: false);
         if (_target.SelectedIndex < 0 && _target.Items.Count > 0) _target.SelectedIndex = 0;
@@ -217,6 +224,15 @@ sealed partial class MainForm : Form
                 _target.SelectedItem = t;
                 return;
             }
+        // A drive that is not in the list (unplugged, not ready) is still what was asked for. Selecting it anyway
+        // makes a scan fail with a clear message, instead of leaving another drive selected and scanning that.
+        if (isDrive && refill)
+        {
+            _customFolder = path;
+            FillTargets();
+            foreach (Target t in _target.Items)
+                if (string.Equals(t.Path, path, StringComparison.OrdinalIgnoreCase)) _target.SelectedItem = t;
+        }
     }
 
     void BrowseFolder()
@@ -241,6 +257,20 @@ sealed partial class MainForm : Form
         ShowStore(_session.Store);
         _timer.Start();
         UpdateButtons();
+    }
+
+    /// <summary>Messages shown instead of dialogs while automated test hooks drive the window (Debug builds).</summary>
+    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+    internal List<string>? TestMessages { get; set; }
+
+    void ShowError(string text)
+    {
+        if (TestMessages != null)
+        {
+            TestMessages.Add(text);
+            _status.Text = text;
+        }
+        else MessageBox.Show(this, text, Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
     }
 
     /// <summary>
@@ -283,7 +313,12 @@ sealed partial class MainForm : Form
         Tick();
         UpdateButtons();
         if (session.State == ScanState.Failed)
-            MessageBox.Show(this, L.T("ScanFailed", session.Error?.Message ?? ""), Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
+        {
+            string why = session.Error is ScanSourceException source
+                ? L.T(source.Problem == ScanSourceProblem.Unavailable ? "ScanSourceGone" : "ScanRootUnreadable", session.RootPath)
+                : session.Error?.Message ?? "";
+            ShowError(L.T("ScanFailed", why));
+        }
         ApplyDeferredJobs();
         if (session.State == ScanState.Completed && _settings.AutoSave) SaveSnapshot(session);
         RefreshBottomPanel();

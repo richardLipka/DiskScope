@@ -32,6 +32,9 @@ public sealed class DuplicateProgress
     public long SizeGroups;
     public long SizeFiles;
     public long SizeBytes;
+
+    /// <summary>Files that could not be read (disk error, access denied, locked): the result may miss duplicates among them.</summary>
+    public long Unreadable;
 }
 
 /// <summary>
@@ -65,7 +68,7 @@ public sealed class DuplicateFinder
         var actual = new Dictionary<int, long>();
         Parallel.ForEach(scanned, options, node =>
         {
-            if (ActualSize(store.GetPath(node)) is long size && size >= MinSize)
+            if (ActualSize(store.GetPath(node), progress) is long size && size >= MinSize)
                 lock (sync) actual[node] = size;
             Interlocked.Increment(ref progress.FilesDone);
         });
@@ -84,7 +87,7 @@ public sealed class DuplicateFinder
             var entries = new List<FileEntry>();
             foreach (int node in group)
             {
-                if (Read(store.GetPath(node), actual[node], sampleOnly: true) is FileEntry e) entries.Add(e with { Node = node });
+                if (Read(store.GetPath(node), actual[node], sampleOnly: true, progress) is FileEntry e) entries.Add(e with { Node = node });
                 Interlocked.Increment(ref progress.FilesDone);
             }
             var unique = entries.GroupBy(e => e.FileId).Select(g => g.First()); // hard links of one file count once
@@ -153,17 +156,29 @@ public sealed class DuplicateFinder
         return false;
     }
 
-    /// <summary>The file's current size, or null when it is gone, unreadable or only in the cloud.</summary>
-    static long? ActualSize(string path)
+    /// <summary>
+    /// The file's current size, or null when it is gone, unreadable or only in the cloud. Files deleted since the scan
+    /// are simply skipped; any other failure (disk error, drive gone, denied) is counted as unreadable.
+    /// </summary>
+    static long? ActualSize(string path, DuplicateProgress progress)
     {
         try
         {
-            var info = new FileInfo(path);
-            if (!info.Exists || ((uint)info.Attributes & CloudOrOffline) != 0) return null;
-            return info.Length;
+            var attributes = File.GetAttributes(path);
+            if (((uint)attributes & CloudOrOffline) != 0) return null;
+            return new FileInfo(path).Length;
+        }
+        catch (FileNotFoundException)
+        {
+            return null;
+        }
+        catch (DirectoryNotFoundException) when (Path.GetPathRoot(path) is string root && Directory.Exists(root))
+        {
+            return null; // its folder was deleted; the drive itself is fine
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
+            Interlocked.Increment(ref progress.Unreadable);
             return null;
         }
     }
@@ -201,8 +216,13 @@ public sealed class DuplicateFinder
             }
             return new FileEntry(NodeStore.None, id, Convert.ToHexString(hash.GetHashAndReset()));
         }
+        catch (FileNotFoundException)
+        {
+            return null; // deleted meanwhile: not a duplicate any more, not an error either
+        }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
+            if (progress != null) Interlocked.Increment(ref progress.Unreadable);
             return null;
         }
     }
