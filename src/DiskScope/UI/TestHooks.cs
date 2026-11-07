@@ -111,11 +111,32 @@ static class TestHooks
         timer.Start();
     }
 
-    public static void Capture(Form form, string file, bool wholeScreen = false)
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    static extern bool PrintWindow(nint hwnd, nint hdc, uint flags);
+
+    /// <summary>
+    /// Renders the window itself (PrintWindow), so other windows on top of it do not end up in the picture.
+    /// With <paramref name="withPopups"/> the screen area is copied instead, to include an open context menu.
+    /// </summary>
+    public static void Capture(Form form, string file, bool withPopups = false)
     {
-        var bounds = wholeScreen ? Screen.FromControl(form).Bounds : form.RectangleToScreen(form.ClientRectangle);
-        using var bmp = new Bitmap(bounds.Width, bounds.Height);
-        using (var g = Graphics.FromImage(bmp)) g.CopyFromScreen(bounds.Location, Point.Empty, bounds.Size);
+        var client = form.RectangleToScreen(form.ClientRectangle);
+        using var bmp = new Bitmap(client.Width, client.Height);
+        using (var g = Graphics.FromImage(bmp))
+        {
+            if (withPopups) g.CopyFromScreen(client.Location, Point.Empty, client.Size);
+            else
+            {
+                using var whole = new Bitmap(form.Width, form.Height);
+                using (var wg = Graphics.FromImage(whole))
+                {
+                    nint hdc = wg.GetHdc();
+                    PrintWindow(form.Handle, hdc, 2); // PW_RENDERFULLCONTENT
+                    wg.ReleaseHdc(hdc);
+                }
+                g.DrawImage(whole, new Point(form.Left - client.Left, form.Top - client.Top));
+            }
+        }
         bmp.Save(file, System.Drawing.Imaging.ImageFormat.Png);
     }
 }

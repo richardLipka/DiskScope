@@ -65,11 +65,14 @@ public class MftTests(ITestOutputHelper output)
         return Attr(0x30, v);
     }
 
-    static byte[] NonResidentData(long allocated, long size, long? compressed = null, string name = "", long lowestVcn = 0)
+    static byte[] NonResidentData(long allocated, long size, long? compressed = null, string name = "", long lowestVcn = 0,
+        long highestVcn = 0, byte[]? runs = null)
     {
         int header = compressed.HasValue ? 72 : 64;
-        var b = new byte[header - 16 + 8];
+        var b = new byte[header - 16 + Align((runs?.Length ?? 0) + 1)];
         W64(b, 0, lowestVcn);
+        W64(b, 8, highestVcn);
+        runs?.CopyTo(b, header - 16);
         W16(b, 16, (ushort)header);
         W64(b, 24, allocated);
         W64(b, 32, size);
@@ -79,8 +82,9 @@ public class MftTests(ITestOutputHelper output)
         if (compressed.HasValue) W16(a, 12, 0x8000);
         if (name.Length > 0)
         {
-            W16(a, 10, (ushort)(header + 8));
-            Encoding.Unicode.GetBytes(name).CopyTo(a, header + 8);
+            int nameOffset = 16 + b.Length;
+            W16(a, 10, (ushort)nameOffset);
+            Encoding.Unicode.GetBytes(name).CopyTo(a, nameOffset);
         }
         return a;
     }
@@ -161,12 +165,18 @@ public class MftTests(ITestOutputHelper output)
             [26] = Record(26, false, StdInfo(10), FileName(27, "child.txt"), NonResidentData(4096, 10), NonResidentData(8192, 8000, name: "Zone")),
             [27] = Record(27, true, StdInfo(11), FileName(5, "Later")),
             [28] = Record(28, true, StdInfo(12), FileName(5, "Junction"), Attr(0xC0, BitConverter.GetBytes(NativeMethods.IO_REPARSE_TAG_MOUNT_POINT))),
+            // Like $BadClus:$Bad: one sparse run over 1000 clusters, without the sparse flag.
+            [29] = Record(29, false, StdInfo(13), FileName(5, "$BadClus"), ResidentData(0),
+                NonResidentData(1000 * 4096, 1000 * 4096, name: "$Bad", highestVcn: 999, runs: [0x02, 0xE8, 0x03])),
+            // 10 real clusters followed by a 90-cluster hole, without the sparse flag.
+            [30] = Record(30, false, StdInfo(14), FileName(5, "holes.bin"),
+                NonResidentData(100 * 4096, 100 * 4096, highestVcn: 99, runs: [0x11, 0x0A, 0x10, 0x01, 0x5A])),
         };
 
         var store = new NodeStore();
         store.CreateRoot(@"T:\");
         var progress = new ScanProgress();
-        var builder = new MftBuilder(store, progress, 30);
+        var builder = new MftBuilder(store, progress, 40);
         foreach (var (number, rec) in records.OrderBy(r => r.Key))
             if (MftParser.ApplyFixup(rec.AsSpan())) builder.AddRecord(rec, number);
         builder.Finish();
@@ -204,9 +214,12 @@ public class MftTests(ITestOutputHelper output)
 
         Assert.True((store[store.FindPath(@"T:\Junction")].Flags & NodeFlags.Reparse) != 0);
 
-        Assert.Equal(9, root.FileCount);
+        Assert.Equal(0, store[store.FindPath(@"T:\$BadClus")].Size);
+        Assert.Equal(10 * 4096, store[store.FindPath(@"T:\holes.bin")].Size);
+
+        Assert.Equal(11, root.FileCount);
         Assert.Equal(3, root.DirCount);
-        Assert.Equal(8192 + 4096 + 1_000_000 + 65536 + 4096 + 8192, root.Size);
+        Assert.Equal(8192 + 4096 + 1_000_000 + 65536 + 4096 + 8192 + 10 * 4096, root.Size);
         Assert.Equal(8192 + 4096 + 1_000_000, store[users].Size);
     }
 

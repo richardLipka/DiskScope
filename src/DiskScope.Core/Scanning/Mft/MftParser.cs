@@ -120,6 +120,7 @@ internal static class MftParser
                     ushort attrFlags = U16(attr, 12);
                     long allocated = I64(attr, 40);
                     if ((attrFlags & (AttrFlagCompressed | AttrFlagSparse)) != 0 && len >= 72) allocated = I64(attr, 64);
+                    else allocated = WithoutSparseRuns(attr, allocated);
                     result.OnDisk += allocated;
                     if (nameLength == 0) result.Length = I64(attr, 48);
                     break;
@@ -142,6 +143,31 @@ internal static class MftParser
         int length = (int)U32(attr, 16);
         int offset = U16(attr, 20);
         return offset + length <= attr.Length ? attr.Slice(offset, length) : default;
+    }
+
+    /// <summary>
+    /// Subtracts sparse runs (holes with no clusters) from the allocated size. Needed for streams that are sparse
+    /// without the sparse flag, such as $BadClus:$Bad, which spans the whole volume but occupies nothing.
+    /// </summary>
+    static long WithoutSparseRuns(ReadOnlySpan<byte> attr, long allocated)
+    {
+        long clusters = I64(attr, 24) - I64(attr, 16) + 1; // HighestVcn - LowestVcn + 1
+        // Only when this extent holds the whole stream, so that allocated / clusters is the cluster size.
+        if (clusters <= 0 || allocated % clusters != 0) return allocated;
+        long clusterSize = allocated / clusters;
+        if (clusterSize < 512 || clusterSize > (2 << 20) || (clusterSize & (clusterSize - 1)) != 0) return allocated;
+        long sparse = 0;
+        int pos = U16(attr, 32);
+        while (pos < attr.Length && attr[pos] != 0)
+        {
+            int lenBytes = attr[pos] & 0xF, offBytes = attr[pos] >> 4;
+            if (pos + 1 + lenBytes + offBytes > attr.Length) return allocated;
+            long count = 0;
+            for (int i = 0; i < lenBytes; i++) count |= (long)attr[pos + 1 + i] << (8 * i);
+            if (offBytes == 0) sparse += count;
+            pos += 1 + lenBytes + offBytes;
+        }
+        return sparse == 0 ? allocated : Math.Max(0, allocated - sparse * clusterSize);
     }
 
     /// <summary>Decodes a non-resident attribute's run list into (starting cluster, cluster count) pairs; sparse runs have LCN -1.</summary>

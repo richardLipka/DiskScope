@@ -35,7 +35,7 @@ internal sealed class MftBuilder
     {
         _names.Clear();
         _nameUsed = 0;
-        if (!MftParser.Parse(rec, number, out var r, CollectName)) return;
+        if (number >= _recordToNode.Length || !MftParser.Parse(rec, number, out var r, CollectName)) return;
 
         if (r.IsExtension)
         {
