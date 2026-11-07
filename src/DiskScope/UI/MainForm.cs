@@ -127,7 +127,8 @@ sealed partial class MainForm : Form
         BuildHistory();
         BuildCompare();
         _toolbar.Items.AddRange([_target, _browse, new ToolStripSeparator(), _scan, _stop, new ToolStripSeparator(), _history, _filter,
-            new ToolStripSeparator(), _searchButton, _cleanupButton, _up, _language, _admin]);
+            new ToolStripSeparator(), _searchButton, _cleanupButton, _up, _settingsMenu, _language, _admin]);
+        BuildSettings();
         FillTargets();
     }
 
@@ -164,6 +165,7 @@ sealed partial class MainForm : Form
         ApplyCompareTexts();
         ApplySearchTexts();
         ApplyQueueTexts();
+        ApplySettingsTexts();
         string? selected = SelectedTarget;
         FillTargets();
         if (selected != null) SelectTarget(selected);

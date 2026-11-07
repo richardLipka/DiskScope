@@ -29,8 +29,9 @@ static class Program
         }
 
         L.Lang = Arg("--lang") ?? settings.Language;
-        string? scan = Arg("--scan");
-        var form = new MainForm(settings, scan ?? Arg("--path"), autoScan: scan != null);
+        string? scan = Arg("--scan") is string s ? Core.ExplorerIntegration.FixPathArgument(s) : null;
+        string? path = Arg("--path") is string p ? Core.ExplorerIntegration.FixPathArgument(p) : null;
+        var form = new MainForm(settings, scan ?? path, autoScan: scan != null);
         if (Arg("--screenshot") is string shot)
             TestHooks.CaptureAfterScan(form, shot, int.TryParse(Arg("--expand"), out int levels) ? levels : 0,
                 args.Contains("--menu"), afterLoad: scan == null);

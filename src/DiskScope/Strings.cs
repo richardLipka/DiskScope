@@ -238,6 +238,12 @@ static class L
         ["QueueConfirmClose"] = ("Ve frontě ke smazání čeká ještě {0} položek. Zavřít a zbytek nemazat?",
                                  "{0} items are still waiting to be deleted. Close and leave them?"),
         ["QueuedLabel"] = ("(ve frontě ke smazání)", "(queued for deletion)"),
+        ["Settings"] = ("Nastavení", "Settings"),
+        ["ExplorerItem"] = ("Položka „Analyzovat v DiskScope“ v Průzkumníku", "\"Analyze in DiskScope\" entry in Explorer"),
+        ["ExplorerVerb"] = ("Analyzovat v DiskScope", "Analyze in DiskScope"),
+        ["ExplorerAdded"] = ("Položka přidána do kontextové nabídky Průzkumníku (ve Windows 11 pod „Zobrazit další možnosti“).",
+                             "Entry added to Explorer's context menu (on Windows 11 under \"Show more options\")."),
+        ["ExplorerRemoved"] = ("Položka odebrána z kontextové nabídky Průzkumníku.", "Entry removed from Explorer's context menu."),
         ["ConfirmStopScan"] = ("Sken stále běží. Opravdu ho zastavit?", "A scan is still running. Stop it?"),
     };
 }
