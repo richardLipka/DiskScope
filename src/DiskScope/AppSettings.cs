@@ -10,6 +10,8 @@ sealed class AppSettings
     public int[]? ColumnWidths { get; set; }
     public Rectangle? WindowBounds { get; set; }
     public bool Maximized { get; set; }
+    public bool AutoSave { get; set; } = true;
+    public bool LoadLastOnStart { get; set; } = true;
 
     static string FilePath => Path.Combine(AppPaths.DataDir, "settings.json");
 

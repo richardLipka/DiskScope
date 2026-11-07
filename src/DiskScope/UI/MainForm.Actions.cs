@@ -17,7 +17,7 @@ sealed partial class MainForm
     readonly ToolStripMenuItem _miWindows = new();
     bool _rescanning;
 
-    bool IsBusy => IsScanning || _rescanning;
+    bool IsBusy => IsScanning || _rescanning || _saving || _loading;
 
     void BuildMenu()
     {

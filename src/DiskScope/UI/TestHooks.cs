@@ -5,9 +5,9 @@ namespace DiskScope.UI;
 /// <summary>Lets automated checks run the real UI: scan, act, save a screenshot or a report, quit.</summary>
 static class TestHooks
 {
-    public static void CaptureAfterScan(MainForm form, string file, int expandLevels, bool withMenu)
+    public static void CaptureAfterScan(MainForm form, string file, int expandLevels, bool withMenu, bool afterLoad)
     {
-        form.ScanCompleted += () =>
+        Action capture = () =>
         {
             form.ExpandLargest(expandLevels);
             if (withMenu) form.ShowMenuAtFocused();
@@ -17,6 +17,27 @@ static class TestHooks
                 form.Close();
             });
         };
+        if (afterLoad) form.SnapshotLoaded += capture;
+        else form.ScanCompleted += capture;
+    }
+
+    /// <summary>Opens the data manager, captures it, and quits.</summary>
+    public static void CaptureDataManager(MainForm form, string file)
+    {
+        form.Shown += (_, _) => After(300, () =>
+        {
+            After(1000, () =>
+            {
+                var dlg = Application.OpenForms.OfType<DataManagerForm>().FirstOrDefault();
+                if (dlg != null)
+                {
+                    Capture(dlg, file);
+                    dlg.Close();
+                }
+                form.Close();
+            });
+            form.ShowDataManagerForTest();
+        });
     }
 
     /// <summary>

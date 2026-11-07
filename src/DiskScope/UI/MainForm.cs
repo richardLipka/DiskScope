@@ -70,6 +70,7 @@ sealed partial class MainForm : Form
         Load += (_, _) =>
         {
             if (autoScan) StartScan();
+            else LoadLastOnStart();
         };
     }
 
@@ -116,7 +117,9 @@ sealed partial class MainForm : Form
             item.Click += (_, _) => L.Lang = lang;
             _language.DropDownItems.Add(item);
         }
-        _toolbar.Items.AddRange([_target, _browse, new ToolStripSeparator(), _scan, _stop, new ToolStripSeparator(), _up, _language, _admin]);
+        BuildHistory();
+        _toolbar.Items.AddRange([_target, _browse, new ToolStripSeparator(), _scan, _stop, new ToolStripSeparator(), _history,
+            new ToolStripSeparator(), _up, _language, _admin]);
         FillTargets();
     }
 
@@ -148,6 +151,7 @@ sealed partial class MainForm : Form
         for (int i = 0; i < _tree.Columns.Count; i++) _tree.Columns[i].Text = L.T(cols[i]);
         _tree.UpdateSortIcon();
         ApplyMenuTexts();
+        ApplyHistoryTexts();
         string? selected = SelectedTarget;
         FillTargets();
         if (selected != null) SelectTarget(selected);
@@ -213,6 +217,7 @@ sealed partial class MainForm : Form
         string? path = SelectedTarget;
         if (path == null || IsBusy) return;
         _settings.LastPath = path;
+        _loaded = null;
         _session = new ScanSession(path);
         _session.Finished += s => BeginInvoke(() => OnScanFinished(s));
         _session.Start();
@@ -239,6 +244,7 @@ sealed partial class MainForm : Form
         UpdateButtons();
         if (session.State == ScanState.Failed)
             MessageBox.Show(this, L.T("ScanFailed", session.Error?.Message ?? ""), Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
+        if (session.State == ScanState.Completed && _settings.AutoSave) SaveSnapshot(session);
         ScanCompleted?.Invoke();
     }
 
@@ -268,9 +274,9 @@ sealed partial class MainForm : Form
     {
         if (_session == null)
         {
-            _status.Text = L.T("Ready");
+            _status.Text = _loaded != null && _rows != null ? LoadedStatusLine(_loaded) : L.T("Ready");
             _progress.Visible = false;
-            _mode.Text = "";
+            _mode.Text = _rows != null ? L.T("Memory", Format.Size(_rows.Store.MemoryUsage, L.Culture)) : "";
             return;
         }
         var p = _session.Progress;
@@ -392,6 +398,8 @@ sealed partial class MainForm : Form
             return;
         }
         _session?.Cancel();
+        // Let a snapshot that is being written finish rather than leave a broken file behind.
+        try { _saveTask?.Wait(); } catch { }
         _settings.Maximized = WindowState == FormWindowState.Maximized;
         _settings.WindowBounds = WindowState == FormWindowState.Normal ? Bounds : RestoreBounds;
         _settings.ColumnWidths = _tree.Columns.Cast<ColumnHeader>().Take(7).Select(c => c.Width * 96 / DeviceDpi).ToArray();

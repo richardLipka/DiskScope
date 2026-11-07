@@ -188,6 +188,55 @@ public sealed class NodeStore
         return new ReadOnlySpan<byte>(_names[n.NameOffset >> NameShift], (int)(n.NameOffset & (NameChunk - 1)), len);
     }
 
+    /// <summary>The stored name bytes and their encoded length, for saving without re-encoding.</summary>
+    internal ReadOnlySpan<byte> RawName(int index, out ushort encodedLen)
+    {
+        encodedLen = this[index].NameLen;
+        return NameBytes(this[index]);
+    }
+
+    /// <summary>Adds a node from a saved name; used when loading a snapshot (single-threaded).</summary>
+    internal int AddRaw(int parent, ReadOnlySpan<byte> rawName, ushort encodedLen, NodeFlags flags, uint attributes, long size, long length, long mtime)
+    {
+        int i = Allocate();
+        ref var n = ref this[i];
+        n.Parent = parent;
+        n.FirstChild = None;
+        n.NextSibling = None;
+        n.Size = size;
+        n.Length = length;
+        n.MTime = mtime;
+        n.Attributes = attributes;
+        n.NameOffset = ReserveName(rawName.Length, out var dest);
+        rawName.CopyTo(dest);
+        n.NameLen = encodedLen;
+        n.Flags = flags | NodeFlags.Used;
+        if (parent == None) Root = i;
+        return i;
+    }
+
+    /// <summary>
+    /// Fills in directory totals from their contents. Relies on every parent having a lower index
+    /// than its children, which holds for a store loaded in preorder.
+    /// </summary>
+    internal void RecomputeTotals()
+    {
+        for (int i = Count - 1; i > 0; i--)
+        {
+            ref var n = ref this[i];
+            if (n.Parent == None) continue;
+            ref var p = ref this[n.Parent];
+            p.Size += n.Size;
+            p.Length += n.Length;
+            if (n.IsDirectory)
+            {
+                p.FileCount += n.FileCount;
+                p.DirCount += n.DirCount + 1;
+            }
+            else p.FileCount++;
+        }
+    }
+
     public string GetPath(int index)
     {
         var parts = new List<string>();
@@ -309,6 +358,17 @@ public sealed class NodeStore
         int bytes = ascii ? name.Length : name.Length * 2;
         if (bytes >= Utf16Bit) throw new ArgumentException("Name too long.", nameof(name));
 
+        uint offset = ReserveName(bytes, out var dest);
+        if (ascii)
+            for (int i = 0; i < name.Length; i++) dest[i] = (byte)name[i];
+        else
+            MemoryMarshal.AsBytes(name).CopyTo(dest);
+        encodedLen = (ushort)(ascii ? bytes : bytes | Utf16Bit);
+        return offset;
+    }
+
+    uint ReserveName(int bytes, out Span<byte> dest)
+    {
         long start;
         while (true)
         {
@@ -320,12 +380,7 @@ public sealed class NodeStore
         int chunk = (int)(start >> NameShift);
         if (chunk >= _names.Length) throw new OutOfMemoryException("Name storage exhausted.");
         if (_names[chunk] == null) Grow(ref _names[chunk], NameChunk);
-        var dest = new Span<byte>(_names[chunk], (int)(start & (NameChunk - 1)), bytes);
-        if (ascii)
-            for (int i = 0; i < name.Length; i++) dest[i] = (byte)name[i];
-        else
-            MemoryMarshal.AsBytes(name).CopyTo(dest);
-        encodedLen = (ushort)(ascii ? bytes : bytes | Utf16Bit);
+        dest = new Span<byte>(_names[chunk], (int)(start & (NameChunk - 1)), bytes);
         return (uint)start;
     }
 }
