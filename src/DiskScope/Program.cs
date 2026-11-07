@@ -11,6 +11,7 @@ static class Program
     ///                                                       without --scan, after the last saved scan is opened
     ///   --data-manager file.png                             captures the saved-data window
     ///   --scan folder --compare-test file.png               compares with the previous saved scan, captures
+    ///   --search-test file.png                              opens the search panel (largest files), captures
     ///   --delete-test report.txt                            deletes test items and writes a report
     /// </summary>
     [STAThread]
@@ -32,6 +33,8 @@ static class Program
                 args.Contains("--menu"), afterLoad: scan == null);
         if (Arg("--compare-test") is string cmpShot)
             TestHooks.CaptureCompare(form, cmpShot, int.TryParse(Arg("--expand"), out int cmpLevels) ? cmpLevels : 0);
+        if (Arg("--search-test") is string searchShot)
+            TestHooks.CaptureSearch(form, searchShot);
         if (Arg("--data-manager") is string dmShot)
             TestHooks.CaptureDataManager(form, dmShot);
         if (Arg("--delete-test") is string report)

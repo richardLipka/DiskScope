@@ -36,6 +36,19 @@ static class TestHooks
         };
     }
 
+    /// <summary>When the tree is ready (scan done or saved scan opened), opens the search panel, captures the results, quits.</summary>
+    public static void CaptureSearch(MainForm form, string file)
+    {
+        Action open = () => form.ShowSearchForTest();
+        form.ScanCompleted += open;
+        form.SnapshotLoaded += open;
+        form.SearchPanelForTest.SearchCompleted += () => After(800, () =>
+        {
+            Capture(form, file);
+            form.Close();
+        });
+    }
+
     /// <summary>Opens the data manager, captures it, and quits.</summary>
     public static void CaptureDataManager(MainForm form, string file)
     {

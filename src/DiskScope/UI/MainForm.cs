@@ -51,7 +51,8 @@ sealed partial class MainForm : Form
         _detail.BackColor = SystemColors.Window;
         _statusBar.Items.AddRange([_status, _progress, _mode]);
 
-        Controls.Add(_tree);
+        BuildSearch();
+        Controls.Add(_split);
         Controls.Add(_detail);
         Controls.Add(_breadcrumb);
         Controls.Add(_toolbar);
@@ -120,7 +121,7 @@ sealed partial class MainForm : Form
         BuildHistory();
         BuildCompare();
         _toolbar.Items.AddRange([_target, _browse, new ToolStripSeparator(), _scan, _stop, new ToolStripSeparator(), _history, _filter,
-            new ToolStripSeparator(), _up, _language, _admin]);
+            new ToolStripSeparator(), _searchButton, _up, _language, _admin]);
         FillTargets();
     }
 
@@ -154,6 +155,7 @@ sealed partial class MainForm : Form
         ApplyMenuTexts();
         ApplyHistoryTexts();
         ApplyCompareTexts();
+        ApplySearchTexts();
         string? selected = SelectedTarget;
         FillTargets();
         if (selected != null) SelectTarget(selected);
@@ -233,6 +235,8 @@ sealed partial class MainForm : Form
         _rows = new TreeRows(store);
         _tree.Rows = _rows;
         ReattachCompare();
+        _search.SetStore(store);
+        if (!_split.Panel2Collapsed) _search.RunSearch();
         _shownVersion = store.Version;
         UpdateBreadcrumb();
         UpdateStatus();
@@ -248,6 +252,7 @@ sealed partial class MainForm : Form
         if (session.State == ScanState.Failed)
             MessageBox.Show(this, L.T("ScanFailed", session.Error?.Message ?? ""), Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
         if (session.State == ScanState.Completed && _settings.AutoSave) SaveSnapshot(session);
+        if (!_split.Panel2Collapsed) _search.RunSearch();
         ScanCompleted?.Invoke();
     }
 

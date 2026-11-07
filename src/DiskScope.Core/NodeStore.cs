@@ -168,6 +168,21 @@ public sealed class NodeStore
             : Encoding.Latin1.GetString(span);
     }
 
+    /// <summary>Decodes the name into a buffer (at least 32767 chars covers any name) without allocating.</summary>
+    public ReadOnlySpan<char> CopyName(int index, Span<char> buffer)
+    {
+        ref var n = ref this[index];
+        var span = NameBytes(n);
+        if ((n.NameLen & Utf16Bit) != 0)
+        {
+            var chars = MemoryMarshal.Cast<byte, char>(span);
+            chars.CopyTo(buffer);
+            return buffer[..chars.Length];
+        }
+        for (int i = 0; i < span.Length; i++) buffer[i] = (char)span[i];
+        return buffer[..span.Length];
+    }
+
     /// <summary>Case-insensitive name comparison without allocating.</summary>
     public bool NameEquals(int index, ReadOnlySpan<char> name)
     {

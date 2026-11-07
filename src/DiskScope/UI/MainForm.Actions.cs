@@ -82,11 +82,11 @@ sealed partial class MainForm
         base.WndProc(ref m);
     }
 
-    List<string> SelectedPaths() => _rows == null ? [] : _tree.SelectedNodes().Select(_rows.Store.GetPath).ToList();
+    void OpenSelected() => OpenNode(_tree.FocusedNode);
 
-    void OpenSelected()
+    void OpenNode(int node)
     {
-        if (_rows == null || _tree.FocusedNode is var node && node == NodeStore.None) return;
+        if (_rows == null || node == NodeStore.None) return;
         string path = _rows.Store.GetPath(node);
         try
         {
@@ -98,25 +98,26 @@ sealed partial class MainForm
         }
     }
 
-    void OpenFile(int node)
+    void OpenFile(int node) => OpenNode(node);
+
+    void RevealSelected() => RevealNode(_tree.FocusedNode);
+
+    void RevealNode(int node)
     {
-        _tree.SelectNode(node);
-        OpenSelected();
+        if (_rows != null && node != NodeStore.None) Shell.RevealInExplorer(_rows.Store.GetPath(node));
     }
 
-    void RevealSelected()
+    void CopyPaths() => CopyNodePaths(_tree.SelectedNodes());
+
+    void CopyNodePaths(List<int> nodes)
     {
-        if (_rows != null && _tree.FocusedNode is var node && node != NodeStore.None)
-            Shell.RevealInExplorer(_rows.Store.GetPath(node));
+        if (_rows != null && nodes.Count > 0) Clipboard.SetText(string.Join(Environment.NewLine, nodes.Select(_rows.Store.GetPath)));
     }
 
-    void CopyPaths()
-    {
-        var paths = SelectedPaths();
-        if (paths.Count > 0) Clipboard.SetText(string.Join(Environment.NewLine, paths));
-    }
+    void DeleteSelected(bool permanent) => DeleteNodes(_tree.SelectedNodes(), permanent);
 
-    void DeleteSelected(bool permanent)
+    /// <summary>Asks for confirmation, then deletes the items (to the recycle bin unless permanent).</summary>
+    void DeleteNodes(List<int> selected, bool permanent)
     {
         if (_rows == null) return;
         if (IsBusy)
@@ -125,7 +126,7 @@ sealed partial class MainForm
             return;
         }
         var store = _rows.Store;
-        var nodes = TreeSync.TopLevel(store, _tree.SelectedNodes());
+        var nodes = TreeSync.TopLevel(store, selected.Where(store.IsLive));
         if (nodes.Count == 0) return;
 
         long size = TreeSync.TotalSize(store, nodes);
@@ -150,9 +151,10 @@ sealed partial class MainForm
         long before = store[store.Root].Size;
         var remaining = TreeSync.RemoveVanished(store, nodes);
         _tree.Reload();
-        _tree.SelectRow(Math.Min(row, _rows.Count - 1));
+        if (row >= 0) _tree.SelectRow(Math.Min(row, _rows.Count - 1));
         _status.Text = L.T("Freed", Format.Size(before - store[store.Root].Size, L.Culture));
         UpdateDetail();
+        RefreshSearchAfterChange();
 
         // A folder that was only partly deleted is rescanned so its size is right again.
         foreach (int dir in remaining.Where(n => store[n].IsDirectory)) Rescan(dir);
@@ -186,6 +188,7 @@ sealed partial class MainForm
             Tick();
             UpdateButtons();
             UpdateDetail();
+            RefreshSearchAfterChange();
         }
     }
 
