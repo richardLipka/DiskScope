@@ -1,156 +1,87 @@
 # DiskScope
 
-**[Česky](#česky) · [English](#english)**
+**A fast, portable disk space analyzer and cleanup tool for Windows.**
 
----
+DiskScope scans a drive or folder, adds up the size of every folder recursively and shows the result as a
+tree you can browse while the scan is still running. It is built to answer one question quickly:
+*where did my disk space go, and what can I safely delete?*
 
-## Česky
+[Česky](README.cs.md) · [User guide](docs/user-guide.md) · [Cleanup catalog](docs/cleanup-catalog.md) ·
+[Safety](docs/safety.md) · [Architecture](docs/architecture.md) · [Development](docs/development.md)
 
-DiskScope je portable aplikace pro Windows, která proskenuje disk nebo složku, spočítá rekurzivně
-velikosti všech složek a umožní rychle najít, kde zabírají místo velké soubory a složky.
+![DiskScope main window: C:\Windows scanned, WinSxS expanded](docs/images/tree.png)
 
-### Funkce
+## Highlights
 
-- Sken celého disku nebo vybrané složky, na libovolném souborovém systému (NTFS, exFAT, FAT32, ReFS).
-- Paralelní procházení složek; velikosti se zobrazují průběžně, strom jde procházet už během skenu.
-- Zobrazuje primárně **velikost na disku** (alokovanou), vedle ní logickou velikost, počty souborů a složek.
-- Rychlý virtuální strom zvládne i desítky milionů položek; řazení podle libovolného sloupce.
-- **Rychlý režim MFT** pro NTFS disky (při spuštění jako správce): čte přímo Master File Table, celý disk
-  za desítky sekund. Pevné odkazy (hardlinky) se započítají jen jednou. Bez práv správce nebo na jiném
-  souborovém systému se automaticky použije procházení složek.
-- Junctions a symbolické odkazy se nenásledují (nic se nezapočítá dvakrát), cloudové soubory OneDrive se nestahují.
-- **Mazání přes frontu**: smazané položky se řadí do fronty a mažou se jedna po druhé na pozadí, bez
-  dialogů Windows. Můžete dál pracovat a přidávat další. Panel Mazání ukazuje stav každé položky a umí
-  frontu pozastavit nebo zrušit. Trvalé mazání přeskočí zamčené soubory a nikdy nenásleduje junction.
-- Zobrazení v Průzkumníku, otevření výchozí aplikací, kopírování cesty, nový sken složky a plné
-  kontextové menu Windows (Shift + pravé tlačítko).
-- **Analýzy**:
-  - *Opuštěná data*: složky v AppData, ProgramData a Program Files, ke kterým nepatří žádný nainstalovaný
-    program, a data odinstalovaných aplikací ze Store.
-  - *Duplicity* (na vyžádání): soubory se stejným obsahem. Porovnává se velikost, pak začátek a konec
-    souboru, nakonec celý obsah. Hardlinky se nehlásí, soubory jen v cloudu se nestahují.
-  - *Mapa* (treemap): plocha odpovídá velikosti, barva typu souboru.
-- **Položka „Analyzovat v DiskScope“** v kontextové nabídce Průzkumníku (volitelně, v nabídce ⚙).
-- **Ukládání skenů**: dokončené skeny se ukládají a při dalším spuštění se poslední hned otevře. V okně
-  Uložená data jde každý sken nebo všechny najednou smazat.
-- **Porovnání se starším skenem**: sloupec Změna, řazení podle přírůstku, filtr „jen narostlé“.
-  Ukáže, co od minula přibylo.
-- **Hledání** (Ctrl+F): největší soubory, složky podle vlastního obsahu, filtr podle jména (`*.iso; *.zip`),
-  velikosti a stáří, v celém stromu nebo jen v otevřené složce.
-- **Poslední změna a poslední přístup**: u souboru jeho vlastní, u složky nejnovější uvnitř. Hledání umí
-  „nezměněno / neotevřeno rok“. Pozor: přístup mohou aktualizovat i antivirus, indexování nebo zálohování.
-- **Úklid**: katalog známých míst (dočasné soubory, mezipaměti prohlížečů a vývojových nástrojů, výpisy
-  pádů, AI modely, virtuální disky Dockeru a WSL, systémové soubory…). U každého místa ukáže, kolik zabírá, jak
-  bezpečné je ho smazat a jak místo uvolnit správně. Bezpečná místa lze vyprázdnit jedním kliknutím.
-  Katalog je soubor JSON: „Upravit katalog…“ vytvoří `data\cleanup-catalog.json`, kde lze položky měnit,
-  přidávat nebo vypínat (`"disabled": true`), bez nového sestavení aplikace.
-- **Kopírovat dotaz pro AI** (Ctrl+Shift+C): sestaví popis souboru nebo složky (velikost, data, největší
-  položky, typy souborů) s otázkami, k čemu slouží a zda je bezpečné ji smazat. Vložíte ho do libovolného AI
-  asistenta. Aplikace sama nic neodesílá.
-- Rozhraní v češtině a angličtině.
+- **Fast on big disks.** Folders are listed in parallel with native NT calls. On NTFS, when run as
+  administrator, DiskScope can read the Master File Table directly and scan a whole drive in tens of seconds.
+  The tree handles tens of millions of entries: 30 million entries take about 2.2 GB of memory, and any
+  sort or search finishes in under 2 seconds.
+- **Size on disk first.** Allocated size is shown alongside logical size, file and folder counts, and the
+  newest modification and access time inside each folder. Hard links are counted once. Junctions and
+  symbolic links are not followed, and OneDrive cloud-only files are not downloaded.
+- **Deleting without the drama.** Deleted items go into a queue and are removed one at a time in the
+  background, with no Windows dialogs. You keep working and keep adding items. Drive roots, Windows,
+  Program Files and user profile folders are protected whatever you select ([details](docs/safety.md)).
+- **Find what to delete:**
+  - **Search** for the largest files, for folders by their own content, by name, size and age, including
+    "not opened for a year".
+  - **Cleanup**: a catalog of 64 known places, such as temp folders, browser and developer caches
+    (npm, Maven, Gradle, NuGet, pip, Cargo…), crash dumps, AI models and Docker/WSL disks. Each one comes
+    with a safety rating and advice. The catalog is a plain JSON file you can extend.
+  - **Abandoned data**: folders in AppData, ProgramData and Program Files that belong to no installed
+    program.
+  - **Duplicates**: files with the same content, checked step by step on request.
+  - **Treemap**: area shows size, color shows file type.
+  - **Compare with an earlier scan** to see what has grown.
+  - **Copy question for AI** builds a description of a folder that you can paste into any AI assistant
+    to ask what it is and whether it can go. DiskScope itself never sends anything anywhere.
+- **Saved scans.** Finished scans are saved compressed and the last one opens instantly next time. The
+  Saved data window deletes them individually or all at once.
+- **Portable.** It is a single `.exe`: nothing is installed, and settings live in a `data` folder next to it.
+  An optional "Analyze in DiskScope" entry can be added to Explorer's context menu (per user, no admin rights needed).
+- **Czech and English** user interface.
 
-### Ovládání
-
-| Klávesa / akce | Funkce |
+| Treemap | Cleanup |
 |---|---|
-| ← / → | sbalit / rozbalit, přejít na nadřazenou / první podsložku |
-| Enter | vstoupit do složky (u souboru otevřít) |
-| Backspace | o úroveň výš |
-| dvojklik | rozbalit složku / otevřít soubor |
-| Del / Shift+Del | přesunout do koše / smazat trvale |
-| F5 | znovu skenovat složku |
-| Ctrl+C | kopírovat cestu |
-| Ctrl+F | hledání a největší soubory |
-| klik na záhlaví | řazení |
+| ![Treemap of C:\Windows](docs/images/treemap.png) | ![Cleanup panel](docs/images/cleanup.png) |
 
-### Spuštění
+![Search panel listing the largest files](docs/images/search.png)
 
-Stáhněte `DiskScope.exe` a spusťte, nic se neinstaluje. Nastavení se ukládá do složky `data` vedle exe
-(pokud do ní nelze zapisovat, do `%LOCALAPPDATA%\DiskScope`).
+## Getting started
 
-### Sestavení
+DiskScope needs Windows 10 or 11 (x64). The published `DiskScope.exe` is self-contained, so .NET does not need
+to be installed.
 
-Vyžaduje .NET 10 SDK.
+1. Build it (see below) or take `DiskScope.exe` from a release.
+2. Run it, pick a drive or folder at the top left and press **Scan**.
+3. Browse the tree; sizes update live. Right-click an item for Explorer, delete, rescan and more.
+
+For the fast MFT scan of an NTFS drive, use **Run as administrator** in the toolbar. Without administrator
+rights, DiskScope lists folders the normal way, which works on any file system (NTFS, ReFS, exFAT, FAT32).
+
+The [user guide](docs/user-guide.md) covers every feature and keyboard shortcut.
+
+## Building
+
+Requires the [.NET 10 SDK](https://dotnet.microsoft.com/download).
 
 ```
 dotnet test
-dotnet publish src/DiskScope -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -o publish
+powershell -File tools/publish.ps1      # single-file DiskScope.exe in ./publish
 ```
 
----
+The [development notes](docs/development.md) cover the test suite, the stress tests and the automation hooks.
 
-## English
+## Project layout
 
-DiskScope is a portable Windows application that scans a drive or folder, computes recursive sizes
-of all folders and lets you quickly find where large files and folders take up space.
-
-### Features
-
-- Scans a whole drive or a chosen folder on any file system (NTFS, exFAT, FAT32, ReFS).
-- Parallel directory enumeration; sizes update live and the tree can be browsed while the scan runs.
-- Shows **size on disk** (allocated) first, alongside logical size and file/folder counts.
-- A fast virtual tree handles tens of millions of entries; sort by any column.
-- **Fast MFT mode** for NTFS drives (when run as administrator): reads the Master File Table directly,
-  a whole drive in tens of seconds. Hard links are counted once. Without administrator rights or on other
-  file systems, folder enumeration is used automatically.
-- Junctions and symbolic links are not followed (nothing is counted twice); OneDrive cloud files are not downloaded.
-- **Deleting through a queue**: deleted items queue up and are deleted one by one in the background, without
-  Windows dialogs; keep working and keep adding. The Deleting panel shows each item's state and can pause or
-  cancel. Permanent deletion skips locked files and never follows junctions.
-- Show in Explorer, open with the default app, copy path, rescan a folder and the full Windows context menu
-  (Shift + right-click).
-- **Analyses**:
-  - *Abandoned data*: folders in AppData, ProgramData and Program Files that no installed program accounts
-    for, and data of uninstalled Store apps.
-  - *Duplicates* (on request): files with the same content, compared by size, then beginning and end, then
-    the whole content. Hard links are not reported, cloud-only files are not downloaded.
-  - *Map* (treemap): area is size, color is file type.
-- **"Analyze in DiskScope"** entry in Explorer's context menu (optional, in the ⚙ menu).
-- **Saved scans**: finished scans are saved and the last one opens instantly on the next start. The Saved
-  data window deletes any or all of them.
-- **Compare with an earlier scan**: a Change column, sorting by growth and an "only grown" filter show
-  what has been added since.
-- **Search** (Ctrl+F): largest files, folders by their own content, filters by name (`*.iso; *.zip`),
-  size and age, in the whole tree or only the open folder.
-- **Last modified and last accessed**: a file's own, a folder's newest inside. Search can find items
-  "unchanged / not opened for a year". Note that antivirus, indexing or backup may update access times too.
-- **Cleanup**: a catalog of known places (temporary files, browser and developer tool caches, crash dumps,
-  AI models, Docker and WSL virtual disks, system files…). For each it shows the space taken, how safe it is
-  to delete and how to free the space properly. Safe places can be emptied with one click.
-  The catalog is a JSON file: "Edit catalog…" creates `data\cleanup-catalog.json`, where entries can be
-  changed, added or turned off (`"disabled": true`) without rebuilding the app.
-- **Copy question for AI** (Ctrl+Shift+C): describes a file or folder (size, dates, largest entries, file
-  types) with questions on what it is for and whether it is safe to delete, ready to paste into any AI
-  assistant. The app itself sends nothing.
-- Czech and English user interface.
-
-### Controls
-
-| Key / action | Function |
+| Path | Contents |
 |---|---|
-| ← / → | collapse / expand, go to parent / first child |
-| Enter | zoom into folder (open a file) |
-| Backspace | up one level |
-| double-click | expand folder / open file |
-| Del / Shift+Del | move to Recycle Bin / delete permanently |
-| F5 | rescan folder |
-| Ctrl+C | copy path |
-| Ctrl+F | search and largest files |
-| header click | sort |
-
-### Running
-
-Download `DiskScope.exe` and run it; nothing gets installed. Settings are stored in a `data` folder next
-to the exe (or in `%LOCALAPPDATA%\DiskScope` when that is not writable).
-
-### Building
-
-Requires the .NET 10 SDK.
-
-```
-dotnet test
-dotnet publish src/DiskScope -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -o publish
-```
+| `src/DiskScope.Core` | Everything except the UI: node store, scanners (directory and MFT), saved scans, search, cleanup catalog, duplicates, abandoned data, deletion queue and safety checks |
+| `src/DiskScope` | WinForms application: owner-drawn virtual tree, panels, Explorer integration, localization |
+| `tests/DiskScope.Tests` | xUnit tests, including disk-error, deep-tree, concurrency and size stress tests |
+| `tools` | Publish and icon scripts |
+| `docs` | Documentation |
 
 ## License
 
