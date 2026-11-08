@@ -65,7 +65,7 @@ velikosti všech složek a umožní rychle najít, kde zabírají místo velké 
 
 ## Spuštění
 
-Stáhněte `DiskScope.exe` a spusťte, nic se neinstaluje. Nastavení se ukládá do složky `data` vedle exe
+Stáhněte `DiskScope.exe` z [Releases](https://github.com/richardLipka/DiskScope/releases) a spusťte, nic se neinstaluje. Soubor zatím není digitálně podepsaný, takže Windows SmartScreen může varovat před neznámým vydavatelem: zvolte **Další informace → Přesto spustit**. Nastavení se ukládá do složky `data` vedle exe
 (pokud do ní nelze zapisovat, do `%LOCALAPPDATA%\DiskScope`).
 
 ## Sestavení

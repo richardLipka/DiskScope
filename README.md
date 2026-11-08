@@ -53,7 +53,9 @@ tree you can browse while the scan is still running. It is built to answer one q
 DiskScope needs Windows 10 or 11 (x64). The published `DiskScope.exe` is self-contained, so .NET does not need
 to be installed.
 
-1. Build it (see below) or take `DiskScope.exe` from a release.
+1. Download `DiskScope.exe` from [Releases](https://github.com/richardLipka/DiskScope/releases), or build it
+   (see below). The executable is not code-signed yet, so Windows SmartScreen may warn that it is from an
+   unknown publisher: choose **More info → Run anyway**. Each release lists the file's SHA-256 checksum.
 2. Run it, pick a drive or folder at the top left and press **Scan**.
 3. Browse the tree; sizes update live. Right-click an item for Explorer, delete, rescan and more.
 
