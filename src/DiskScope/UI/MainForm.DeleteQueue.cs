@@ -40,20 +40,26 @@ sealed partial class MainForm
     }
 
     /// <summary>Marks the items in the tree and hands them to the queue.</summary>
-    List<DeleteJob> EnqueueDelete(List<int> nodes, bool permanent)
+    List<DeleteJob> EnqueueDelete(List<int> nodes, bool permanent) =>
+        EnqueueJobs(nodes, permanent ? DeleteMethod.Permanent : DeleteMethod.RecycleBin, null, false, default);
+
+    /// <summary>Builds one job per node (deleting, moving or compressing), marks the nodes and queues the jobs.</summary>
+    List<DeleteJob> EnqueueJobs(List<int> nodes, DeleteMethod method, string? destination, bool leaveLink, CompressionKind compression)
     {
         var store = _rows!.Store;
-        var method = permanent ? DeleteMethod.Permanent : DeleteMethod.RecycleBin;
         var jobs = nodes.Select(n =>
         {
             ref var e = ref store[n];
-            // Files are checked against their scanned size and time before deletion (hard-link entries carry no size).
-            bool check = !e.IsDirectory && (e.Flags & NodeFlags.HardLink) == 0;
+            // Files are checked against their scanned size and time before deletion or moving (hard-link entries carry no size).
+            bool check = !e.IsDirectory && (e.Flags & NodeFlags.HardLink) == 0 && method != DeleteMethod.Compress;
             return new DeleteJob(store.GetPath(n), e.IsDirectory, e.Size, method)
             {
                 Store = store, Node = n,
                 ExpectedLength = check ? e.Length : null,
                 ExpectedMTime = check ? e.MTime : null,
+                Destination = destination,
+                LeaveLink = leaveLink,
+                Compression = compression,
             };
         }).ToList();
         foreach (int n in nodes) store.SetFlag(n, NodeFlags.Queued);
@@ -89,6 +95,7 @@ sealed partial class MainForm
     {
         var removed = new List<int>();
         var rescan = new List<int>();
+        bool resized = false;
         foreach (var job in jobs)
         {
             var store = job.Store;
@@ -113,10 +120,19 @@ sealed partial class MainForm
             }
             store.ClearFlag(job.Node, NodeFlags.Queued);
             job.Store = null; // applied; the node number below is all that is still needed
+            if (job.Method == DeleteMethod.Compress)
+            {
+                // A compressed folder is rescanned for its new sizes; a single file is measured directly.
+                _freedThisSession += job.Freed;
+                if (job.IsDirectory) rescan.Add(job.Node);
+                else resized |= UpdateFileSize(store, job.Node, job.Path);
+                continue;
+            }
             if (job.State == DeleteState.Done)
             {
+                // Deleted, or moved away (a junction left behind takes no space and shows up at the next rescan).
                 removed.Add(job.Node);
-                _freedThisSession += job.Size;
+                _freedThisSession += job.Freed;
             }
             // Partly deleted: rescan so its size is right. A folder on a disk that went away is left as it was,
             // since rescanning would only drop its contents from the tree.
@@ -124,6 +140,7 @@ sealed partial class MainForm
                 rescan.Add(job.Node);
         }
         if (_rows == null || removed.Count + rescan.Count == 0 && jobs.Count == 0) return;
+        if (resized) _tree.Reload();
 
         if (removed.Count > 0)
         {
@@ -138,6 +155,25 @@ sealed partial class MainForm
         _tree.Invalidate();
         UpdateDetail();
         RefreshSearchAfterChange();
+    }
+
+    /// <summary>Sets a file's on-disk size to what the disk says now (after compressing it) and adjusts the folders above.</summary>
+    static bool UpdateFileSize(NodeStore store, int node, string path)
+    {
+        try
+        {
+            long now = FileCompressor.OnDiskSize(path);
+            long delta = now - store[node].Size;
+            if (delta == 0) return false;
+            store[node].Size = now;
+            if (store[node].Parent != NodeStore.None) store.AddToAncestors(store[node].Parent, delta, 0, 0, 0);
+            store.MarkChanged();
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
     }
 
     void ApplyDeferredJobs()

@@ -118,6 +118,11 @@ sealed partial class MainForm
             else _search.FocusName();
             return true;
         }
+        if (keyData == (Keys.Control | Keys.L))
+        {
+            FocusFilter();
+            return true;
+        }
         return base.ProcessCmdKey(ref msg, keyData);
     }
 

@@ -15,10 +15,17 @@ sealed partial class MainForm
     readonly ToolStripMenuItem _mapItem = new();
     readonly TabPage _mapTab = new();
     readonly TreemapPanel _map = new() { Dock = DockStyle.Fill };
+    readonly ToolStripMenuItem _typesItem = new();
+    readonly TabPage _typesTab = new();
+    readonly FileTypesPanel _types = new() { Dock = DockStyle.Fill };
 
     void BuildAnalysis()
     {
-        _analysisMenu.DropDownItems.AddRange([_orphanItem, _duplicateItem, _mapItem]);
+        _analysisMenu.DropDownItems.AddRange([_typesItem, _mapItem, new ToolStripSeparator(), _orphanItem, _duplicateItem]);
+        _typesItem.Click += (_, _) => ShowBottom(_typesTab);
+        _typesTab.Controls.Add(_types);
+        _types.RevealRequested += RevealInTree;
+        _types.ResultMenu = BuildNodeListMenu(() => _types.SelectedNodes(), () => _types.FocusedNode);
         _mapItem.Click += (_, _) => ShowBottom(_mapTab);
         _mapTab.Controls.Add(_map);
         _map.NodeClicked += node =>
@@ -52,9 +59,12 @@ sealed partial class MainForm
             if (BottomVisible(_duplicateTab)) _duplicates.UpdateFolder();
         };
         _duplicates.RevealRequested += RevealInTree;
+        _duplicates.CanModify = () => !IsBusy;
+        _duplicates.MayReplace = path => _guard.CheckResolved(path) == Core.Deletion.DeletionGuard.Verdict.Allowed;
+        _duplicates.Linked += OnDuplicatesLinked;
         _duplicates.ResultMenu = BuildNodeListMenu(() => _duplicates.SelectedNodes(), () => _duplicates.FocusedNode);
 
-        _bottomTabs.TabPages.AddRange([_orphanTab, _duplicateTab, _mapTab]);
+        _bottomTabs.TabPages.AddRange([_typesTab, _mapTab, _orphanTab, _duplicateTab]);
     }
 
     /// <summary>The folder selected in the tree, or the folder of the selected file; the view root when nothing is selected.</summary>
@@ -80,11 +90,13 @@ sealed partial class MainForm
     void FollowTreeInMap()
     {
         // A click in the map selects in the tree, but must not move the map away from what the user is looking at.
-        if (_selectingFromMap || !BottomVisible(_mapTab) || _rows == null) return;
+        if (_selectingFromMap || _rows == null || !(BottomVisible(_mapTab) || BottomVisible(_typesTab))) return;
         int node = _tree.FocusedNode;
         if (node == NodeStore.None) return;
         int folder = _rows.Store[node].IsDirectory ? node : _rows.Store[node].Parent;
-        if (folder != NodeStore.None && folder != _map.Folder) _map.ShowFolder(folder);
+        if (folder == NodeStore.None) return;
+        if (BottomVisible(_mapTab) && folder != _map.Folder) _map.ShowFolder(folder);
+        if (BottomVisible(_typesTab) && folder != _types.Folder) _types.ShowFolder(folder);
     }
 
     void ApplyAnalysisTexts()
@@ -94,16 +106,19 @@ sealed partial class MainForm
         _duplicateItem.Text = L.T("DupItem");
         _duplicateTab.Text = L.T("DupTab");
         _mapItem.Text = _mapTab.Text = L.T("MapTab");
+        _typesItem.Text = _typesTab.Text = L.T("TypesTab");
+        _types.ApplyTexts();
         _orphans.ApplyTexts();
         _duplicates.ApplyTexts();
         _map.ApplyTexts();
     }
 
-    void SetAnalysisStore(NodeStore store)
+    void SetAnalysisStore(NodeStore? store)
     {
         _orphans.SetStore(store);
         _duplicates.SetStore(store);
         _map.SetStore(store);
+        _types.SetStore(store);
     }
 
     /// <summary>Fills a panel when it is shown; duplicates are searched only on request.</summary>
@@ -116,6 +131,11 @@ sealed partial class MainForm
             int node = _tree.FocusedNode;
             _map.ShowFolder(node == NodeStore.None ? _rows.ViewRoot : node);
         }
+        else if (tab == _typesTab && _rows != null)
+        {
+            int node = _tree.FocusedNode;
+            _types.ShowFolder(node == NodeStore.None ? _rows.ViewRoot : node);
+        }
     }
 
     void RefreshAnalysisAfterChange()
@@ -124,6 +144,32 @@ sealed partial class MainForm
         else if (BottomVisible(_duplicateTab)) _duplicates.RemoveDead();
         if (BottomVisible(_duplicateTab)) _duplicates.UpdateFolder();
         else if (BottomVisible(_mapTab)) _map.Relayout();
+        else if (BottomVisible(_typesTab)) _types.Refresh();
+    }
+
+    /// <summary>
+    /// Copies now hard links of a kept file: they take no space of their own any more. Shown like the hard links an
+    /// MFT scan finds, with their size counted at the kept file only.
+    /// </summary>
+    void OnDuplicatesLinked(List<int> nodes)
+    {
+        if (_rows == null || nodes.Count == 0) return;
+        var store = _rows.Store;
+        long saved = 0;
+        foreach (int n in nodes)
+        {
+            if (!store.IsLive(n)) continue;
+            long size = store[n].Size;
+            store[n].Size = 0;
+            store.SetFlag(n, NodeFlags.HardLink);
+            if (store[n].Parent != NodeStore.None) store.AddToAncestors(store[n].Parent, -size, 0, 0, 0);
+            saved += size;
+        }
+        store.MarkChanged();
+        _freedThisSession += saved;
+        UpdateQueueStatus();
+        _tree.Reload();
+        UpdateDetail();
     }
 
     /// <summary>The usual actions for a list of tree nodes: show, open, Explorer, copy, AI question, delete.</summary>
@@ -166,6 +212,8 @@ sealed partial class MainForm
     }
 
     internal TreemapPanel MapPanelForTest => _map;
+    internal FileTypesPanel TypesPanelForTest => _types;
+    internal void ShowTypesForTest() => ShowBottom(_typesTab);
     internal void ShowMapForTest() => ShowBottom(_mapTab);
     internal DuplicatePanel DuplicatePanelForTest => _duplicates;
 

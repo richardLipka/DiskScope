@@ -36,6 +36,14 @@ public class ConcurrencyStressTests(ITestOutputHelper output)
         _ = CleanupFinder.Find(s, CleanupCatalog.Default());
         _ = FolderSummary.Build(s, s.Root, 10);
         _ = TreemapLayout.Build(s, s.Root, new RectF(0, 0, 1200, 800));
+        _ = FileTypes.Totals(s, s.Root);
+        _ = FileTypes.LargestFiles(s, s.Root, ".txt", 50);
+        var filter = new TreeFilter(r.Next(2) == 0 ? "*5*" : "d1*", r.Next(2) == 0 ? 0 : 100_000);
+        filter.Prepare(s);
+        var filtered = new TreeRows(s) { Filter = x => filter.Shows(s, x) };
+        filtered.SetExpanded(s.Root, true);
+        filtered.Rebuild();
+        _ = CompactTree.From(s);
         var cmp = new TreeComparison(s, baseline);
         var compared = new TreeRows(s) { Sort = SortColumn.Delta, DeltaOf = cmp.Delta, Filter = x => cmp.Delta(x) != 0 };
         compared.SetExpanded(s.Root, true);

@@ -12,6 +12,9 @@ sealed class AppSettings
     public bool Maximized { get; set; }
     public bool AutoSave { get; set; } = true;
     public bool LoadLastOnStart { get; set; } = true;
+    public UI.ThemeMode Theme { get; set; } = UI.ThemeMode.System;
+    public string? LastMoveFolder { get; set; }
+    public Core.Deletion.CompressionKind Compression { get; set; } = Core.Deletion.CompressionKind.Lzx;
 
     static string FilePath => Path.Combine(AppPaths.DataDir, "settings.json");
 

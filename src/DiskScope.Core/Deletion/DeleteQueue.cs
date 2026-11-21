@@ -9,7 +9,7 @@ public enum DeleteState
     Cancelled,
 }
 
-/// <summary>One item waiting in or processed by the delete queue.</summary>
+/// <summary>One item waiting in or processed by the queue: deleted, moved or compressed.</summary>
 public sealed class DeleteJob(string path, bool isDirectory, long size, DeleteMethod method)
 {
     public string Path { get; } = path;
@@ -32,9 +32,27 @@ public sealed class DeleteJob(string path, bool isDirectory, long size, DeleteMe
     public long? ExpectedLength { get; init; }
     public long? ExpectedMTime { get; init; }
 
+    /// <summary>For <see cref="DeleteMethod.Move"/>: the folder the item is moved into, and whether a junction stays behind.</summary>
+    public string? Destination { get; init; }
+    public bool LeaveLink { get; init; }
+
+    /// <summary>For <see cref="DeleteMethod.Compress"/>: the algorithm.</summary>
+    public CompressionKind Compression { get; init; } = CompressionKind.Xpress8K;
+
+    long _bytesDone;
+
+    /// <summary>Bytes moved or compressed so far, while the job runs.</summary>
+    public long BytesDone => Volatile.Read(ref _bytesDone);
+
+    internal void SetBytesDone(long bytes) => Volatile.Write(ref _bytesDone, bytes);
+
+    /// <summary>Space freed on the item's drive once done: its size when deleted or moved to another drive, the saving when compressed.</summary>
+    public long Freed { get; internal set; }
+
     /// <summary><see cref="Error"/> values the UI translates.</summary>
     public const string ErrorProtected = "#protected";
     public const string ErrorChanged = "#changed";
+    public const string ErrorCompressRefused = "#compress-refused";
 
     public bool Finished => State is DeleteState.Done or DeleteState.Failed or DeleteState.Cancelled;
 }
@@ -161,15 +179,37 @@ public sealed class DeleteQueue : IDisposable
             Notify(job);
             try
             {
-                if (_guard.CheckResolved(job.Path, _resolvedParents) != DeletionGuard.Verdict.Allowed)
+                if (job.Method == DeleteMethod.Compress)
+                {
+                    if (_guard.CheckCompress(job.Path) != DeletionGuard.Verdict.Allowed) job.Error = DeleteJob.ErrorCompressRefused;
+                    else
+                    {
+                        var result = FileCompressor.Compress(job.Path, job.IsDirectory, job.Compression, Progress(job), token);
+                        job.FailedEntries = result.Failed;
+                        job.Error = result.Error;
+                        job.Freed = result.Saved;
+                        // Partly compressed is still useful; it counts as failed only when nothing could be done.
+                        job.State = result.Error == null || result.Files > result.Failed ? DeleteState.Done : DeleteState.Failed;
+                    }
+                }
+                else if (_guard.CheckResolved(job.Path, _resolvedParents) != DeletionGuard.Verdict.Allowed)
                     job.Error = DeleteJob.ErrorProtected;
                 else if (!IsUnchanged(job))
                     job.Error = DeleteJob.ErrorChanged;
+                else if (job.Method == DeleteMethod.Move)
+                {
+                    var result = FileMover.Move(job.Path, job.IsDirectory, job.Destination!, job.LeaveLink, Progress(job), token);
+                    job.FailedEntries = result.FailedEntries;
+                    job.Error = result.Error;
+                    job.Freed = result.Freed;
+                    job.State = result.Moved ? DeleteState.Done : DeleteState.Failed;
+                }
                 else
                 {
                     var result = _deleter.Delete(job.Path, job.IsDirectory, job.Method, token);
                     job.FailedEntries = result.FailedEntries;
                     job.Error = result.Error;
+                    if (result.Gone) job.Freed = job.Size;
                     job.State = result.Gone ? DeleteState.Done : DeleteState.Failed;
                 }
                 if (job.State == DeleteState.Running) job.State = DeleteState.Failed; // refused above
@@ -188,6 +228,20 @@ public sealed class DeleteQueue : IDisposable
             Interlocked.Decrement(ref _active);
             Notify(job);
         }
+    }
+
+    /// <summary>Records a running job's progress and reports it, at most a few times a second.</summary>
+    Action<long> Progress(DeleteJob job)
+    {
+        long last = 0;
+        return bytes =>
+        {
+            job.SetBytesDone(bytes);
+            long now = Environment.TickCount64;
+            if (now - last < 400) return;
+            last = now;
+            Notify(job);
+        };
     }
 
     /// <summary>Raises <see cref="JobChanged"/>; a failing subscriber must not stop the worker (and with it the process).</summary>

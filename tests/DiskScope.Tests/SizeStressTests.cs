@@ -132,6 +132,14 @@ public class SizeStressTests(ITestOutputHelper output)
         Step("folder summary of the drive", () => FolderSummary.Build(s, root, 20));
         Step("treemap of the drive", () => TreemapLayout.Build(s, root, new RectF(0, 0, 2560, 1440)));
         Step("treemap of the million-file folder", () => TreemapLayout.Build(s, huge, new RectF(0, 0, 2560, 1440)));
+        Step("file types of the drive", () => Assert.True(FileTypes.Totals(s, root).Count > 5));
+        Step("largest .log files of the drive", () => Assert.NotEmpty(FileTypes.LargestFiles(s, root, ".log", 500)));
+        Step("tree filter *.log; node_modules (prepare)", () =>
+        {
+            var filter = new TreeFilter("*.log; node_modules", 10_000);
+            filter.Prepare(s);
+            Assert.True(filter.FoldersWithMatches > 0);
+        });
 
         var rows = new TreeRows(s);
         rows.SetExpanded(root, true);
@@ -180,16 +188,10 @@ public class SizeStressTests(ITestOutputHelper output)
             output.WriteLine($"snapshot file {new FileInfo(file).Length / 1048576:N0} MB");
             int count = s.Count;
             string hugePath = s.GetPath(huge);
-            // Comparing holds two trees; above 15 million nodes that does not fit a typical PC's free memory,
-            // so the original is released and only loading is checked.
-            bool compare = count <= 15_000_000;
-            if (!compare)
-            {
-                s = null!;
-                rows = null!;
-                GC.Collect();
-                output.WriteLine("original released; comparison skipped");
-            }
+            // As the app does when it opens a saved scan: the shown tree is let go first.
+            s = null!;
+            rows = null!;
+            GC.Collect();
             var loaded = Step("snapshot load", () => Snapshot.Load(file, out _));
             Assert.Equal(count, loaded.Count);
             Assert.Equal(rootSize, loaded[loaded.Root].Size);
@@ -201,8 +203,11 @@ public class SizeStressTests(ITestOutputHelper output)
             Step($"remove {doomed.Count:N0} files at once", () => loaded.RemoveMany(doomed));
             Assert.Equal(hugeCount - doomed.Count, loaded[loadedHuge].FileCount);
 
-            if (!compare) return;
-            var cmp = Step("comparison with the earlier scan", () => new TreeComparison(loaded, s));
+            // The earlier scan for a comparison is loaded compactly, so both fit in memory together.
+            var baseline = Step("snapshot load (compact, for comparing)", () => Snapshot.LoadCompact(file, out _));
+            Assert.Equal(count, baseline.Count);
+            output.WriteLine($"compact tree {baseline.MemoryUsage / 1048576:N0} MB vs full {loaded.MemoryUsage / 1048576:N0} MB");
+            var cmp = Step("comparison with the earlier scan", () => new TreeComparison(loaded, baseline));
             Assert.True(cmp.Delta(loaded.Root) < 0);
             Step("comparison rows (changed only)", () =>
             {

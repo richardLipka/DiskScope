@@ -1,0 +1,31 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.9.0.schema.json
+PackageIdentifier: RichardLipka.DiskScope
+PackageVersion: 0.1.0
+PackageLocale: en-US
+Publisher: Richard Lipka
+PublisherUrl: https://github.com/richardLipka
+PublisherSupportUrl: https://github.com/richardLipka/DiskScope/issues
+Author: Richard Lipka
+PackageName: DiskScope
+PackageUrl: https://github.com/richardLipka/DiskScope
+License: MIT
+LicenseUrl: https://github.com/richardLipka/DiskScope/blob/main/LICENSE
+ShortDescription: Fast, portable disk space analyzer and cleanup tool for Windows.
+Description: |-
+  DiskScope scans a drive or folder and shows recursive sizes in a tree you can browse while the scan runs
+  (NTFS MFT fast mode when run as administrator). It finds what to delete or move: search by size, name and age,
+  a cleanup catalog of caches and temporary files, file types, a treemap, duplicates, abandoned app data and
+  growth since an earlier scan. Deleting, moving and compressing run in a background queue with safety checks.
+Moniker: diskscope
+Tags:
+- disk
+- disk-space
+- disk-usage
+- cleanup
+- treemap
+- duplicates
+- ntfs
+- portable
+ReleaseNotesUrl: https://github.com/richardLipka/DiskScope/releases/tag/v0.1.0
+ManifestType: defaultLocale
+ManifestVersion: 1.9.0

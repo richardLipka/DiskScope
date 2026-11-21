@@ -4,25 +4,9 @@ using DiskScope.Core;
 
 namespace DiskScope.UI;
 
-/// <summary>File type groups for coloring the map.</summary>
-enum FileKind
-{
-    Video,
-    Image,
-    Audio,
-    Archive,
-    DiskImage,
-    Program,
-    Document,
-    Code,
-    Other,
-}
-
 /// <summary>A treemap of one folder: area is on-disk size, color is the file type. Click selects, double-click opens a folder.</summary>
 sealed class TreemapView : Control
 {
-    static readonly Dictionary<string, FileKind> Kinds = BuildKinds();
-
     public static readonly Dictionary<FileKind, Color> Colors = new()
     {
         [FileKind.Video] = Color.FromArgb(155, 89, 182),
@@ -79,26 +63,7 @@ sealed class TreemapView : Control
         Relayout();
     }
 
-    public static FileKind KindOf(string name) =>
-        Kinds.TryGetValue(Path.GetExtension(name), out var kind) ? kind : FileKind.Other;
-
-    static Dictionary<string, FileKind> BuildKinds()
-    {
-        var map = new Dictionary<string, FileKind>(StringComparer.OrdinalIgnoreCase);
-        void Add(FileKind kind, string exts)
-        {
-            foreach (var e in exts.Split(' ')) map["." + e] = kind;
-        }
-        Add(FileKind.Video, "mp4 mkv avi mov wmv flv webm m4v mpg mpeg ts m2ts vob 3gp");
-        Add(FileKind.Image, "jpg jpeg png gif bmp tif tiff webp heic heif raw cr2 cr3 nef arw dng psd svg ico");
-        Add(FileKind.Audio, "mp3 wav flac aac ogg m4a wma opus aiff mid");
-        Add(FileKind.Archive, "zip rar 7z gz tgz bz2 xz zst tar cab lz4 pak");
-        Add(FileKind.DiskImage, "iso img vhd vhdx vmdk vdi qcow2 wim esd dmg bin");
-        Add(FileKind.Program, "exe dll sys msi msix appx ocx drv so lib pyd node jar");
-        Add(FileKind.Document, "pdf doc docx xls xlsx ppt pptx odt ods odp txt rtf md epub csv");
-        Add(FileKind.Code, "cs js ts py java c cpp h hpp go rs php rb json xml yml yaml html css sql pyc class");
-        return map;
-    }
+    public static FileKind KindOf(string name) => FileTypes.KindOf(name);
 
     protected override void OnPaint(PaintEventArgs e)
     {

@@ -163,6 +163,13 @@ public sealed unsafe class DirectoryScanner : IScanner
                             follow = false;
                         }
 
+                        // Files compressed by Windows (compact /exe, CompactOS, DiskScope's Compress) keep their data
+                        // in a hidden stream: the listing shows no reparse point and an allocation of 0. A file over
+                        // 4 KB with nothing allocated cannot have its data inside the MFT record, so it is one of
+                        // those (or sparse); ask for the real size. Cloud placeholders really take nothing.
+                        if (!isDir && alloc == 0 && eof > 4096 && (attrs & CloudOrOffline) == 0)
+                            alloc = CompressedSize(LongPath.Of(prefix + name.ToString()), alloc);
+
                         // A directory's own access time is left out: listing it (as this scan does) updates it.
                         int node = store.Add(item.Node, name, flags, attrs, isDir ? 0 : alloc, isDir ? 0 : eof, mtime, isDir ? 0 : atime);
                         if (tail == NodeStore.None) head = node; else store[tail].NextSibling = node;
@@ -196,5 +203,19 @@ public sealed unsafe class DirectoryScanner : IScanner
             Interlocked.Add(ref progress.Bytes, size);
             for (int i = subdirs.Count - 1; i >= 0; i--) Push(subdirs[i]);
         }
+    }
+
+    /// <summary>FILE_ATTRIBUTE_OFFLINE, RECALL_ON_OPEN, RECALL_ON_DATA_ACCESS: cloud files whose data is not here.</summary>
+    const uint CloudOrOffline = 0x1000 | 0x40000 | 0x400000;
+
+    [System.Runtime.InteropServices.DllImport("kernel32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode, SetLastError = true)]
+    static extern uint GetCompressedFileSizeW(string name, out uint high);
+
+    /// <summary>On-disk size of a compressed file, or <paramref name="fallback"/> when it cannot be read.</summary>
+    static long CompressedSize(string path, long fallback)
+    {
+        uint low = GetCompressedFileSizeW(path, out uint high);
+        if (low == 0xFFFFFFFF && System.Runtime.InteropServices.Marshal.GetLastPInvokeError() != 0) return fallback;
+        return ((long)high << 32) | low;
     }
 }

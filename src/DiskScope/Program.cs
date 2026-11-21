@@ -4,7 +4,7 @@ namespace DiskScope;
 
 static class Program
 {
-    /// <summary>Command line: [--path folder] [--scan folder] [--lang cs|en]</summary>
+    /// <summary>Command line: [--path folder] [--scan folder] [--lang cs|en] [--theme system|light|dark]</summary>
     [STAThread]
     static void Main(string[] args)
     {
@@ -14,6 +14,8 @@ static class Program
         AppDomain.CurrentDomain.UnhandledException += (_, e) => ReportError(e.ExceptionObject as Exception, fatal: true);
 
         var settings = AppSettings.Load();
+        // The color mode must be set before the first window is created.
+        Theme.Apply(Enum.TryParse<ThemeMode>(Arg(args, "--theme"), ignoreCase: true, out var theme) ? theme : settings.Theme);
         L.Lang = Arg(args, "--lang") ?? settings.Language;
         string? scan = Arg(args, "--scan") is string s ? Core.ExplorerIntegration.FixPathArgument(s) : null;
         string? path = Arg(args, "--path") is string p ? Core.ExplorerIntegration.FixPathArgument(p) : null;

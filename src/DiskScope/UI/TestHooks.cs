@@ -15,6 +15,10 @@ namespace DiskScope.UI;
 ///   --orphan-test file.png                                              opens the abandoned-data panel, captures
 ///   --scan folder --duplicate-test file.png [--duplicate-folder path]   searches duplicates (in a folder), captures
 ///   --map-test file.png                                                 opens the treemap, captures
+///   --scan folder --freespace-test report.txt [--shot file.png]          compresses folder\compress, moves folder\move (with a junction)
+///   --overview-test file.png                                            shows the drive overview, captures
+///   --types-test file.png                                               opens the file types panel (largest type selected), captures
+///   --filter-test "patterns" file.png [--filter-size index]             filters the tree, expands the largest folders, captures
 ///   --scan folder --queue-test file.png                                 queues items in a paused queue, captures, cancels
 ///   --delete-test report.txt [--delete-delay ms]                        deletes test items and writes a report
 ///   --scan folder --open-test file [--direct]                           opens a file as the app does (or directly)
@@ -39,6 +43,20 @@ static class TestHooks
             CaptureCompare(form, cmpShot, int.TryParse(Arg("--expand"), out int cmpLevels) ? cmpLevels : 0);
         if (Arg("--search-test") is string searchShot) CaptureSearch(form, searchShot);
         if (Arg("--map-test") is string mapShot) CaptureMap(form, mapShot);
+        if (Arg("--types-test") is string typesShot) CaptureTypes(form, typesShot);
+        if (Arg("--freespace-test") is string fsReport) RunFreeSpaceTest(form, fsReport, Arg("--shot"));
+        if (Arg("--overview-test") is string overviewShot)
+            form.Shown += (_, _) => After(2500, () =>
+            {
+                form.ShowOverviewForTest();
+                After(1200, () =>
+                {
+                    Capture(form, overviewShot);
+                    form.Close();
+                });
+            });
+        if (Arg("--filter-test") is string filter && Arg("--out") is string filterShot)
+            CaptureFilter(form, filter, int.TryParse(Arg("--filter-size"), out int fs) ? fs : 0, filterShot);
         if (Arg("--duplicate-test") is string dupShot) CaptureDuplicates(form, dupShot, Arg("--duplicate-folder"));
         if (Arg("--orphan-test") is string orphanShot) CaptureOrphans(form, orphanShot);
         if (Arg("--queue-test") is string queueShot) CaptureQueue(form, queueShot);
@@ -125,6 +143,44 @@ static class TestHooks
         });
     }
 
+    public static void CaptureTypes(MainForm form, string file)
+    {
+        Action open = () => form.ShowTypesForTest();
+        form.ScanCompleted += open;
+        form.SnapshotLoaded += open;
+        bool selected = false;
+        form.TypesPanelForTest.Filled += () =>
+        {
+            if (selected) return;
+            selected = true;
+            form.TypesPanelForTest.SelectFirstForTest();
+            After(1500, () =>
+            {
+                Capture(form, file);
+                form.Close();
+            });
+        };
+    }
+
+    public static void CaptureFilter(MainForm form, string filter, int sizeIndex, string file)
+    {
+        Action run = () =>
+        {
+            form.SetFilterForTest(filter, sizeIndex);
+            After(2500, () =>
+            {
+                form.ExpandLargest(4);
+                After(800, () =>
+                {
+                    Capture(form, file);
+                    form.Close();
+                });
+            });
+        };
+        form.ScanCompleted += run;
+        form.SnapshotLoaded += run;
+    }
+
     /// <summary>After the scan, opens the duplicates panel, runs the search, captures the result, quits.</summary>
     public static void CaptureDuplicates(MainForm form, string file, string? folder)
     {
@@ -200,6 +256,42 @@ static class TestHooks
                     $"disk: files left {Directory.EnumerateFiles(folder).Count()}",
                     form.QueueSummaryForTest,
                 };
+                File.WriteAllLines(report, lines);
+                if (shot != null) Capture(form, shot);
+                form.Close();
+            };
+            timer.Start();
+        };
+    }
+
+    /// <summary>
+    /// After the scan of a test folder, compresses its "compress" subfolder and moves its "move" subfolder next to
+    /// it (leaving a junction), through the queue as the menu does; then reports the jobs and the tree, and quits.
+    /// </summary>
+    public static void RunFreeSpaceTest(MainForm form, string report, string? shot)
+    {
+        form.ScanCompleted += () =>
+        {
+            string root = form.Store!.RootPath.TrimEnd('\\');
+            string compress = Path.Combine(root, "compress"), move = Path.Combine(root, "move"), destination = root + "-moved";
+            long before = form.NodeSizeForTest(compress);
+            long rootBefore = form.NodeSizeForTest(root);
+            var jobs = form.CompressForTest(compress, Core.Deletion.CompressionKind.Xpress4K)
+                .Concat(form.MoveForTest(move, destination, leaveLink: true)).ToList();
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            var timer = new System.Windows.Forms.Timer { Interval = 100 };
+            timer.Tick += (_, _) =>
+            {
+                // Wait for the queue and then for the rescan of the compressed folder.
+                if (!form.QueueIdleForTest || clock.ElapsedMilliseconds < 3000) return;
+                timer.Stop();
+                var lines = jobs.Select(j => $"{j.Method} {Path.GetFileName(j.Path)}: {j.State}, freed {j.Freed}, error {j.Error ?? "-"}").ToList();
+                lines.Add($"tree compress: {before} -> {form.NodeSizeForTest(compress)}");
+                lines.Add($"tree move node: {(form.NodeSizeForTest(move) >= 0 ? "still there" : "removed")}");
+                lines.Add($"tree root: {rootBefore} -> {form.NodeSizeForTest(root)}");
+                lines.Add($"disk junction -> {Core.Native.Junction.Target(move) ?? "none"}");
+                lines.Add($"disk moved file exists: {File.Exists(Path.Combine(destination, "move", "data.bin"))}");
+                lines.Add(form.QueueSummaryForTest);
                 File.WriteAllLines(report, lines);
                 if (shot != null) Capture(form, shot);
                 form.Close();

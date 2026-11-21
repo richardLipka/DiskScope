@@ -43,7 +43,7 @@ public class ScanErrorTests(ITestOutputHelper output)
     }
 
     [Fact]
-    public void DriveRemovedDuringScanDoesNotCrashOrLookComplete()
+    public async Task DriveRemovedDuringScanDoesNotCrashOrLookComplete()
     {
         if (FreeDriveLetter() is not char letter) return;
         using var t = new TestTree();
@@ -60,7 +60,7 @@ public class ScanErrorTests(ITestOutputHelper output)
         {
             Run("subst.exe", $"{letter}: /D"); // pulled out while scanning
         }
-        Assert.True(Task.Run(session.Wait).Wait(TimeSpan.FromMinutes(2)), "scan did not finish");
+        await Task.Run(session.Wait).WaitAsync(TimeSpan.FromMinutes(2)); // a scan that never ends fails with a timeout
         output.WriteLine($"state {session.State}, errors {session.Progress.Errors}, files {session.Progress.Files}");
         // Either the scan was quicker than the removal (then complete and clean) or it must say it failed.
         if (session.State == ScanState.Completed) Assert.Equal(0, session.Progress.Errors);

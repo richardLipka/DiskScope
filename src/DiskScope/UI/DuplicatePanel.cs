@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using DiskScope.Core;
 using DiskScope.Core.Duplicates;
+using DiskScope.Core.Deletion;
 
 namespace DiskScope.UI;
 
@@ -15,6 +16,7 @@ sealed class DuplicatePanel : UserControl
     readonly Label _folder = new() { AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(3, 8, 3, 2), ForeColor = SystemColors.GrayText };
     readonly Button _start = new() { AutoSize = true };
     readonly Button _markCopies = new() { AutoSize = true, Enabled = false };
+    readonly Button _link = new() { AutoSize = true, Enabled = false };
     readonly Label _summary = new() { AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(3, 8, 12, 2) };
     readonly ProgressBar _progressBar = new() { Width = 220, Visible = false };
     readonly ListView _list = new()
@@ -39,6 +41,17 @@ sealed class DuplicatePanel : UserControl
 
     public event Action<int>? RevealRequested;
 
+    /// <summary>Copies that were replaced by hard links, for the tree to update their sizes.</summary>
+    public event Action<List<int>>? Linked;
+
+    /// <summary>Whether the tree may be changed now (not while a scan runs).</summary>
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public Func<bool>? CanModify { get; set; }
+
+    /// <summary>Checks a copy before it is replaced, as deletion does (no protected or system places).</summary>
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public Func<string, bool>? MayReplace { get; set; }
+
     /// <summary>Raised when a search ends; used by the test hooks.</summary>
     public event Action? Finished;
 
@@ -51,7 +64,7 @@ sealed class DuplicatePanel : UserControl
 
     public DuplicatePanel()
     {
-        _bar.Controls.AddRange([_scope, _folder, _minSize, _start, _markCopies, _progressBar, _summary]);
+        _bar.Controls.AddRange([_scope, _folder, _minSize, _start, _markCopies, _link, _progressBar, _summary]);
         foreach (Control c in _bar.Controls) c.Margin = new Padding(3, 4, 3, 2);
         _bar.SetFlowBreak(_folder, true);
         _scope.SelectedIndexChanged += (_, _) => UpdateFolder();
@@ -69,6 +82,8 @@ sealed class DuplicatePanel : UserControl
             else Start();
         };
         _markCopies.Click += (_, _) => MarkCopies();
+        _link.Click += (_, _) => LinkSelected();
+        _list.SelectedIndexChanged += (_, _) => _link.Enabled = _cancel == null && _list.SelectedItems.Count > 0;
         _timer.Tick += (_, _) => ShowProgress();
         _minSize.SelectedIndex = -1;
         ApplyTexts();
@@ -96,6 +111,7 @@ sealed class DuplicatePanel : UserControl
         UpdateFolder();
         _start.Text = L.T(_cancel != null ? "Stop" : "DupStart");
         _markCopies.Text = L.T("DupMarkCopies");
+        _link.Text = L.T("DupLink");
         string[] cols = ["ColName", "ColOnDisk", "ColModified", "ColFolder"];
         for (int i = 0; i < cols.Length; i++) _list.Columns[i].Text = L.T(cols[i]);
         if (_cancel == null && _store != null && _groups.Count > 0) Fill();
@@ -264,4 +280,64 @@ sealed class DuplicatePanel : UserControl
     {
         if (_cancel == null && _store != null && _groups.Count > 0) Fill();
     }
+
+    /// <summary>
+    /// Replaces the selected files with hard links to a file of their group that is not selected (the oldest one).
+    /// A group where every file is selected keeps its oldest file.
+    /// </summary>
+    async void LinkSelected()
+    {
+        if (_store == null || _cancel != null || CanModify?.Invoke() == false) return;
+        var store = _store;
+        var selected = SelectedNodes().ToHashSet();
+        var pairs = new List<(int Keeper, int Copy)>();
+        foreach (var g in _groups)
+        {
+            var live = g.Nodes.Where(store.IsLive).OrderBy(n => store[n].MTime).ToList();
+            var copies = live.Where(selected.Contains).ToList();
+            if (copies.Count == 0) continue;
+            int keeper = live.FirstOrDefault(n => !selected.Contains(n), live[0]);
+            pairs.AddRange(copies.Where(c => c != keeper).Select(c => (keeper, c)));
+        }
+        if (pairs.Count == 0) return;
+        long saving = pairs.Sum(p => store[p.Copy].Size);
+        if (MessageBox.Show(this, L.T("DupLinkConfirm", pairs.Count, Format.Size(saving, L.Culture)), L.T("DupTab"),
+                MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
+
+        var work = pairs.Select(p => (p.Copy, Keeper: store.GetPath(p.Keeper), Path: store.GetPath(p.Copy), store[p.Copy].Length, store[p.Copy].MTime)).ToList();
+        var refusedPaths = work.Where(w => MayReplace?.Invoke(w.Path) == false).Select(w => w.Path).ToHashSet();
+        _link.Enabled = _markCopies.Enabled = _start.Enabled = false;
+        _summary.Text = L.T("DupLinking");
+        var linked = new List<int>();
+        var errors = new List<string>();
+        await Task.Run(() =>
+        {
+            foreach (var w in work)
+            {
+                string? error = refusedPaths.Contains(w.Path) ? L.T("QueueStateProtected")
+                    : HardLinker.Replace(w.Keeper, w.Path, w.Length, w.MTime);
+                if (error == null) linked.Add(w.Copy);
+                else errors.Add($"{w.Path}: {LinkError(error)}");
+            }
+        });
+        if (IsDisposed) return;
+        _start.Enabled = true;
+        if (store == _store) Linked?.Invoke(linked);
+        Fill();
+        string done = L.T("DupLinked", linked.Count, Format.Size(work.Where(w => linked.Contains(w.Copy)).Sum(w => store[w.Copy].Size), L.Culture));
+        _summary.Text = done + (errors.Count > 0 ? " · " + L.T("DupLinkFailed", errors.Count) : "");
+        if (errors.Count > 0)
+            MessageBox.Show(this, done + "\n\n" + string.Join("\n", errors.Take(15)) + (errors.Count > 15 ? "\n…" : ""), L.T("DupTab"),
+                MessageBoxButtons.OK, MessageBoxIcon.Warning);
+    }
+
+    static string LinkError(string error) => error switch
+    {
+        HardLinker.ErrorOtherDrive => L.T("DupLinkOtherDrive"),
+        HardLinker.ErrorChanged => L.T("QueueStateChanged"),
+        HardLinker.ErrorDiffers => L.T("DupLinkDiffers"),
+        _ => error,
+    };
+
+    internal void SelectCopiesForTest() => MarkCopies();
 }

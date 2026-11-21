@@ -15,6 +15,8 @@ sealed partial class MainForm
 
     readonly ToolStripComboBox _filter = new() { DropDownStyle = ComboBoxStyle.DropDownList, Visible = false, AutoSize = false };
     TreeComparison? _compare;
+    /// <summary>The older scan being compared with; kept when the shown tree is replaced, so the next one is compared too.</summary>
+    CompactTree? _compareBaseline;
     SnapshotInfo? _compareInfo;
 
     void BuildCompare()
@@ -70,10 +72,10 @@ sealed partial class MainForm
         _loading = true;
         UpdateButtons();
         var progress = new Progress<double>(p => _status.Text = L.T("Loading", (int)(p * 100)));
-        NodeStore baseline;
+        CompactTree baseline;
         try
         {
-            baseline = await Task.Run(() => Snapshot.Load(info.FilePath, out _, ((IProgress<double>)progress).Report));
+            baseline = await Task.Run(() => Snapshot.LoadCompact(info.FilePath, out _, ((IProgress<double>)progress).Report));
         }
         catch (Exception ex)
         {
@@ -87,6 +89,7 @@ sealed partial class MainForm
         try
         {
             _compareInfo = info;
+            _compareBaseline = baseline;
             _compare = new TreeComparison(_rows.Store, baseline);
             if (_tree.Columns.Count <= (int)Col.Delta)
                 _tree.Columns.Add(L.T("ColDelta"), LogicalToDeviceUnits(120), HorizontalAlignment.Right);
@@ -122,6 +125,7 @@ sealed partial class MainForm
     void StopCompare()
     {
         _compare = null;
+        _compareBaseline = null;
         _compareInfo = null;
         _filter.Visible = false;
         if (_tree.Columns.Count > (int)Col.Delta) _tree.Columns.RemoveAt((int)Col.Delta);
@@ -138,8 +142,8 @@ sealed partial class MainForm
     /// <summary>After a new tree is shown, compares it with the same baseline as before.</summary>
     void ReattachCompare()
     {
-        if (_compare == null || _rows == null) return;
-        _compare = new TreeComparison(_rows.Store, _compare.Baseline);
+        if (_compareBaseline == null || _rows == null) return;
+        _compare = new TreeComparison(_rows.Store, _compareBaseline);
         _rows.Sort = SortColumn.Delta;
         ApplyCompareToRows();
     }
@@ -150,14 +154,14 @@ sealed partial class MainForm
         var cmp = _compare;
         _rows.DeltaOf = cmp == null ? null : cmp.Delta;
         _tree.DeltaOf = cmp == null ? null : n => cmp.Delta(n);
-        _rows.Filter = cmp == null ? null : (CompareFilter)Math.Max(0, _filter.SelectedIndex) switch
+        _compareRowFilter = cmp == null ? null : (CompareFilter)Math.Max(0, _filter.SelectedIndex) switch
         {
             CompareFilter.Grown => n => cmp.Delta(n) > 0,
             CompareFilter.Changed => n => cmp.Delta(n) != 0,
             _ => null,
         };
         _tree.UpdateSortIcon();
-        _tree.Reload();
+        UpdateRowFilter();
     }
 
     string CompareStatus()

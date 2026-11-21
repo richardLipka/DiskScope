@@ -1,0 +1,13 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.9.0.schema.json
+PackageIdentifier: RichardLipka.DiskScope
+PackageVersion: 0.1.0
+InstallerType: portable
+Commands:
+- diskscope
+MinimumOSVersion: 10.0.17763.0
+Installers:
+- Architecture: x64
+  InstallerUrl: https://github.com/richardLipka/DiskScope/releases/download/v0.1.0/DiskScope.exe
+  InstallerSha256: F012E6FA9E1960A0857089A4BBE65FF7765F3856D5669604B81BFC5949ACC6A8
+ManifestType: installer
+ManifestVersion: 1.9.0

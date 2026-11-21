@@ -11,13 +11,51 @@
 ```
 dotnet build
 dotnet run --project src/DiskScope -- --lang en
-powershell -File tools/publish.ps1
+powershell -File tools/publish.ps1 [-Version 0.2.0]
 ```
 
 `tools/publish.ps1` produces the portable `publish\DiskScope.exe`: a self-contained, compressed single file of
 about 50 MB that runs without .NET installed. `tools/make-icon.ps1` regenerates `DiskScope.ico`.
 
-The version, author and copyright are set in `Directory.Build.props`.
+The version, author and copyright are set in `Directory.Build.props`. A release build from a tag takes its
+version from the tag.
+
+## Continuous integration and releases
+
+Two GitHub Actions workflows live in `.github/workflows`:
+
+- **`ci.yml`** builds and runs the whole test suite on `windows-latest` for every push to `main` and every pull
+  request, and keeps the test results as an artifact. The runner is elevated, so the live MFT test runs there
+  too.
+- **`release.yml`** runs when a version tag is pushed. It tests, publishes the single-file exe with the tag's
+  version, computes its SHA-256, generates the winget manifests, and creates the GitHub release. The release
+  carries the exe, a `.sha256` file and `winget-manifests.zip`, with notes generated from the commits since the
+  last release.
+
+To release:
+
+```
+git tag v0.2.0
+git push origin v0.2.0
+```
+
+**Code signing** slots into `release.yml` between publishing and the checksum. The commented step there shows
+Azure Trusted Signing; SignPath or a certificate on a hardware token work the same way. The signature must be
+applied before the checksum and the manifests are computed.
+
+### winget
+
+DiskScope is published to winget as a *portable* package (`RichardLipka.DiskScope`). winget downloads the exe
+from the GitHub release and puts it on the PATH as `diskscope`; the `data` folder then lives next to it, in
+winget's package folder.
+
+- `tools/winget-manifest.ps1 -Version x.y.z -Sha256 <hash>` writes the three manifest files. The release workflow
+  runs it for every release (see `winget-manifests.zip`). The manifests for v0.1.0 are in `packaging/winget`.
+- `winget validate --manifest <folder>` checks them locally.
+- To publish a version, open a pull request to [microsoft/winget-pkgs](https://github.com/microsoft/winget-pkgs)
+  that adds the folder `manifests/r/RichardLipka/DiskScope/<version>`. You can do it by hand, or with
+  `wingetcreate submit <folder>`. Microsoft's pipeline validates the package, and after approval it can be
+  installed with `winget install RichardLipka.DiskScope`.
 
 ## Tests
 
@@ -25,16 +63,16 @@ The version, author and copyright are set in `Directory.Build.props`.
 dotnet test
 ```
 
-The xUnit suite in `tests/DiskScope.Tests` (132 tests, about 20 s) runs against the core library and real
+The xUnit suite in `tests/DiskScope.Tests` (173 tests, about 20 s) runs against the core library and real
 temporary folders:
 
 | Area | Tests |
 |---|---|
-| Data model | `NodeStoreTests`, `TreeSyncTests`, `DeepTreeTests` (30,000 levels on a 256 KB stack) |
+| Data model | `NodeStoreTests`, `TreeSyncTests`, `DeepTreeTests` (30,000 levels on a 256 KB stack), `CompactTreeTests` |
 | Scanning | `DirectoryScannerTests`, `MftTests` (parser, cycles, fuzzing damaged records; the live MFT test needs elevation and is skipped without it), `ScanErrorTests`, `AccessTimeTests` |
-| Saved scans and comparing | `SnapshotTests` (round trip, damaged and crafted files), `ComparisonTests` |
-| Analyses | `SearchTests`, `CleanupTests`, `OrphanTests`, `DuplicateTests`, `TreemapTests` |
-| Deleting | `DeletionTests`, `DeletionGuardTests`, `TrailingDotTests`, `MassDeletionTests`, `DiskErrorTests` (simulated disk errors and unplugged drives) |
+| Saved scans and comparing | `SnapshotTests` (round trip, damaged and crafted files), `ComparisonTests`, `CompactTreeTests` (compact and full loading agree) |
+| Analyses | `SearchTests`, `CleanupTests`, `OrphanTests`, `DuplicateTests`, `TreemapTests`, `FileTypesTests` (types and the tree filter) |
+| Deleting, moving, compressing | `DeletionTests`, `DeletionGuardTests`, `TrailingDotTests`, `MassDeletionTests`, `DiskErrorTests` (simulated disk errors and unplugged drives), `FreeSpaceTests` (moves with and without junctions, cancelled copies, WOF compression, compression guard), `HardLinkTests` |
 | App | `LocalizationTests` (every key in both languages with the same placeholders), `ExplorerIntegrationTests` |
 | Concurrency | `ConcurrencyStressTests` (see below) |
 
@@ -57,28 +95,34 @@ dotnet test -c Release --filter "FullyQualifiedName~StressTests"
 - Analyses run while batches of deletions are removed from the tree.
 - Sorting, the treemap and folder summaries run while folder totals keep changing.
 
-Afterwards, every folder's totals are checked against its contents. These tests found the
-sort crash ("IComparer.Compare() method returns inconsistent results") that occurred when sorting during a
-scan.
+Afterwards, every folder's totals are checked against its contents. These tests found the sort crash
+("IComparer.Compare() method returns inconsistent results") that occurred when sorting during a scan.
 
 **`SizeStressTests`** run only with `DISKSCOPE_STRESS=1` and use a disk-like tree: a folder of a million files,
 a chain 2,000 levels deep, and the rest as ordinary folders with names in several scripts. Every step is
-timed: building, totals, all search kinds, cleanup, abandoned data, treemaps, sorting a million-row folder by
-every column, expanding the whole tree, restoring a 100,000-item selection, saving and loading a scan,
-removing 500,000 items at once, and comparing. The size is set with `DISKSCOPE_STRESS_NODES`. The default is
-12 million, because comparing holds two trees in memory; above 15 million the comparison step is skipped.
+timed:
+
+- building, totals, all search kinds, cleanup, abandoned data, file types and the tree filter;
+- treemaps, sorting a million-row folder by every column, expanding the whole tree, restoring a 100,000-item
+  selection;
+- saving and loading a scan, removing 500,000 items at once, and comparing with a compactly loaded baseline.
+
+The size is set with `DISKSCOPE_STRESS_NODES`; the default is 12 million.
 
 Results at 30 million nodes on a 20-thread PC:
 
 | Step | Time |
 |---|---|
-| Build 30 M nodes (2.2 GB) | 4.8 s |
-| Recompute all totals | 0.4 s |
-| Search (any kind) | 0.05–1.7 s |
-| Cleanup catalog | 0.8 s |
-| Sort a 1 M-file folder | 0.07–0.8 s |
-| Expand the whole tree (30 M rows) | 1.4 s |
-| Save / load scan (824 MB) | 8.9 s / 6.0 s |
+| Build 30 M nodes (2.2 GB) | 5 s |
+| Recompute all totals | 0.5 s |
+| Search (any kind) | 0.04–1.7 s |
+| Cleanup catalog | 0.9 s |
+| File types of the whole drive | 1.9 s |
+| Prepare a tree filter (`*.log; node_modules`) | 0.9 s |
+| Sort a 1 M-file folder | 0.04–0.7 s |
+| Expand the whole tree (30 M rows) | 1.5 s |
+| Save / load scan (824 MB) | 9 s / 7 s |
+| Load compactly for comparing (906 MB in memory) | 5.7 s |
 | Remove 500,000 items | 0.08 s |
 
 ## Automation hooks (Debug builds)
@@ -90,6 +134,8 @@ are used to check UI changes and to take the screenshots in these docs. They are
 ```
 DiskScope.exe --scan C:\Windows --lang en --screenshot tree.png --expand 1
 DiskScope.exe --scan C:\Windows --map-test map.png
+DiskScope.exe --scan C:\Windows --types-test types.png
+DiskScope.exe --scan C:\Windows --filter-test "*.msi; *.cab" --filter-size 2 --out filter.png
 DiskScope.exe --scan <folder> --empty-test <subfolder> --out report.txt
 ```
 
@@ -102,7 +148,8 @@ The full list is at the top of [`src/DiskScope/UI/TestHooks.cs`](../src/DiskScop
 - **Every UI text** goes into `Strings.cs` with both Czech and English. `LocalizationTests` fail otherwise.
 - **The tree is shared across threads.** Read [the concurrency model](architecture.md#concurrency-model)
   before changing `NodeStore` or anything that sorts or walks it.
-- **All file system access on tree paths uses `LongPath.Of(path)`** (extended `\\?\` paths). All deletions go
-  through `DeleteQueue` → `DeletionGuard` → `FileDeleter`.
+- **All file system access on tree paths uses `LongPath.Of(path)`** (extended `\\?\` paths). All deletions,
+  moves and compressions go through `DeleteQueue` and `DeletionGuard`.
 - **No recursion over the tree.** Use explicit stacks; trees can be arbitrarily deep.
 - After an `await` in the UI, check `IsDisposed`. Background threads reach the UI only through `PostToUi`.
+- Colors of custom-drawn parts come from `Theme`, so they work in the dark appearance too.

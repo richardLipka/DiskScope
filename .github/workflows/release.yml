@@ -1,0 +1,74 @@
+name: Release
+
+# Push a tag such as v0.2.0 to build, test and publish a release:
+#   git tag v0.2.0 && git push origin v0.2.0
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Version from the tag
+        shell: pwsh
+        run: '"VERSION=$($env:GITHUB_REF_NAME.TrimStart(''v''))" >> $env:GITHUB_ENV'
+
+      - name: Test
+        run: dotnet test -c Release
+
+      - name: Publish the single-file exe
+        shell: pwsh
+        run: ./tools/publish.ps1 -Version $env:VERSION
+
+      # Code signing slots in here once a certificate exists. With Azure Trusted Signing, for example:
+      #
+      # - uses: azure/trusted-signing-action@v0
+      #   with:
+      #     azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+      #     azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+      #     azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+      #     endpoint: https://weu.codesigning.azure.net/
+      #     trusted-signing-account-name: ${{ secrets.SIGNING_ACCOUNT }}
+      #     certificate-profile-name: ${{ secrets.SIGNING_PROFILE }}
+      #     files-folder: publish
+      #     files-folder-filter: exe
+      #     file-digest: SHA256
+      #     timestamp-rfc3161: http://timestamp.acs.microsoft.com
+      #     timestamp-digest: SHA256
+
+      - name: Checksum and winget manifests
+        shell: pwsh
+        run: |
+          $hash = (Get-FileHash publish/DiskScope.exe -Algorithm SHA256).Hash
+          "$hash  DiskScope.exe" | Out-File publish/DiskScope.exe.sha256 -Encoding ascii
+          "SHA256=$hash" >> $env:GITHUB_ENV
+          ./tools/winget-manifest.ps1 -Version $env:VERSION -Sha256 $hash -OutDir publish/winget
+          Compress-Archive -Path publish/winget/* -DestinationPath publish/winget-manifests.zip
+
+      - name: Create the GitHub release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $notes = @"
+          **DiskScope.exe** – a single portable file for Windows 10/11 x64; nothing to install, no .NET needed.
+
+          The executable is not code-signed yet, so Windows SmartScreen may warn; choose **More info → Run anyway**.
+
+          ``````
+          SHA-256  $env:SHA256
+          ``````
+          "@
+          gh release create $env:GITHUB_REF_NAME publish/DiskScope.exe publish/DiskScope.exe.sha256 publish/winget-manifests.zip `
+            --title "DiskScope $env:VERSION" --notes $notes --generate-notes

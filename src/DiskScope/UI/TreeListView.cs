@@ -24,11 +24,6 @@ enum Col
 /// </summary>
 sealed class TreeListView : ListView
 {
-    static readonly Color BarColor = Color.FromArgb(132, 178, 235);
-    static readonly Color BarTrack = Color.FromArgb(232, 238, 246);
-    static readonly Color GrowColor = Color.FromArgb(192, 57, 43);
-    static readonly Color ShrinkColor = Color.FromArgb(39, 136, 76);
-
     readonly ImageList _rowHeight = new();
     TreeRows? _rows;
 
@@ -208,7 +203,8 @@ sealed class TreeListView : ListView
 
     // --- drawing ---
 
-    protected override void OnDrawColumnHeader(DrawListViewColumnHeaderEventArgs e) => e.DrawDefault = true;
+    protected override void OnDrawColumnHeader(DrawListViewColumnHeaderEventArgs e) =>
+        Theme.DrawHeader(e, Font, _rows != null && e.ColumnIndex == (int)SortCol() ? _rows.Descending : null);
 
     protected override void OnDrawItem(DrawListViewItemEventArgs e) => e.DrawDefault = false;
 
@@ -221,7 +217,7 @@ sealed class TreeListView : ListView
         if (e.ColumnIndex == 0) b.Width = Columns[0].Width;
 
         bool selected = SelectedIndices.Contains(e.ItemIndex);
-        Color back = selected ? (Focused ? SystemColors.Highlight : Color.FromArgb(217, 217, 217)) : BackColor;
+        Color back = selected ? (Focused ? SystemColors.Highlight : Theme.InactiveSelection) : BackColor;
         Color fore = selected && Focused ? SystemColors.HighlightText : ForeColor;
         using (var br = new SolidBrush(back)) g.FillRectangle(br, b);
 
@@ -232,7 +228,7 @@ sealed class TreeListView : ListView
         {
             string text = CellText(node, col);
             if (col == Col.Delta && DeltaOf?.Invoke(node) is long d && !(selected && Focused))
-                fore = d > 0 ? GrowColor : d < 0 ? ShrinkColor : SystemColors.GrayText;
+                fore = d > 0 ? Theme.Grow : d < 0 ? Theme.Shrink : SystemColors.GrayText;
             var flags = TextFormatFlags.Right | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix;
             if (col is Col.Modified or Col.Accessed) flags = (flags & ~TextFormatFlags.Right) | TextFormatFlags.Left;
             TextRenderer.DrawText(g, text, Font, Rectangle.Inflate(b, -Scale(4), 0), fore, flags);
@@ -257,7 +253,7 @@ sealed class TreeListView : ListView
             PointF[] tri = _rows.IsExpanded(node)
                 ? [new(cx - r, cy - r / 2), new(cx + r, cy - r / 2), new(cx, cy + r * 0.8f)]
                 : [new(cx - r / 2, cy - r), new(cx + r * 0.8f, cy), new(cx - r / 2, cy + r)];
-            using var br = new SolidBrush(selected && Focused ? fore : Color.FromArgb(110, 110, 110));
+            using var br = new SolidBrush(selected && Focused ? fore : Theme.Glyph);
             g.FillPolygon(br, tri);
             g.SmoothingMode = SmoothingMode.None;
         }
@@ -280,7 +276,7 @@ sealed class TreeListView : ListView
         Color c = fore;
         if (!(selected && Focused))
         {
-            if ((flags & NodeFlags.Error) != 0) c = GrowColor;
+            if ((flags & NodeFlags.Error) != 0) c = Theme.Grow;
             else if ((flags & (NodeFlags.Reparse | NodeFlags.HardLink | NodeFlags.Queued)) != 0 || (n.IsDirectory && (flags & NodeFlags.Scanned) == 0))
                 c = SystemColors.GrayText;
         }
@@ -293,10 +289,10 @@ sealed class TreeListView : ListView
     {
         if (Percent(node) is not double p) return;
         var track = Rectangle.Inflate(b, -Scale(4), -Scale(4));
-        using (var br = new SolidBrush(BarTrack)) g.FillRectangle(br, track);
+        using (var br = new SolidBrush(Theme.BarTrack)) g.FillRectangle(br, track);
         var bar = track with { Width = (int)Math.Round(track.Width * Math.Clamp(p, 0, 100) / 100) };
-        using (var br = new SolidBrush(BarColor)) g.FillRectangle(br, bar);
-        TextRenderer.DrawText(g, p.ToString("0.0", L.Culture) + " %", Font, track, Color.FromArgb(30, 30, 30),
+        using (var br = new SolidBrush(Theme.Bar)) g.FillRectangle(br, bar);
+        TextRenderer.DrawText(g, p.ToString("0.0", L.Culture) + " %", Font, track, Theme.BarText,
             TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix);
     }
 
@@ -380,6 +376,47 @@ sealed class TreeListView : ListView
         else base.OnKeyDown(e);
     }
 
+    string _typed = "";
+    long _typedAt;
+
+    /// <summary>
+    /// Type-to-find: letters typed within a second form a prefix, and the next row whose name starts with it gets
+    /// selected. Typing the same letter again moves on to the next match.
+    /// </summary>
+    protected override void OnKeyPress(KeyPressEventArgs e)
+    {
+        base.OnKeyPress(e);
+        if (e.Handled || _rows == null || _rows.Count == 0 || char.IsControl(e.KeyChar)) return;
+        e.Handled = true; // the list view's own search would look at the empty virtual items
+        long now = Environment.TickCount64;
+        _typed = now - _typedAt < 1000 ? _typed + e.KeyChar : e.KeyChar.ToString();
+        _typedAt = now;
+        bool sameLetter = _typed.All(c => char.ToUpperInvariant(c) == char.ToUpperInvariant(_typed[0]));
+        string prefix = sameLetter ? _typed[..1] : _typed;
+        int current = FocusedItem?.Index ?? -1;
+        // A new or repeated letter looks from the next row on; a growing prefix may still match the current row.
+        int from = sameLetter ? current + 1 : Math.Max(0, current);
+        if (FindRow(prefix, from) is int row) SelectRow(row);
+    }
+
+    int? FindRow(string prefix, int from)
+    {
+        var store = Store!;
+        Span<char> name = stackalloc char[32768];
+        int count = _rows!.Count;
+        for (int k = 0; k < count; k++)
+        {
+            int row = (from + k) % count;
+            if (store.CopyName(_rows.NodeAt(row), name).StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) return row;
+        }
+        return null;
+    }
+
+    internal void TypeForTest(string text)
+    {
+        foreach (char c in text) OnKeyPress(new KeyPressEventArgs(c));
+    }
+
     protected override void OnColumnClick(ColumnClickEventArgs e)
     {
         base.OnColumnClick(e);
@@ -436,20 +473,22 @@ sealed class TreeListView : ListView
     [DllImport("uxtheme.dll", CharSet = CharSet.Unicode)]
     static extern int SetWindowTheme(nint hWnd, string app, string? idList);
 
+    Col SortCol() => _rows?.Sort switch
+    {
+        SortColumn.Name => Col.Name,
+        SortColumn.Length => Col.Size,
+        SortColumn.Files => Col.Files,
+        SortColumn.Modified => Col.Modified,
+        SortColumn.Accessed => Col.Accessed,
+        SortColumn.Delta => Col.Delta,
+        _ => Col.OnDisk,
+    };
+
     public void UpdateSortIcon()
     {
         if (!IsHandleCreated || _rows == null) return;
         nint header = SendMessage(Handle, LVM_GETHEADER, 0, 0);
-        Col sortCol = _rows.Sort switch
-        {
-            SortColumn.Name => Col.Name,
-            SortColumn.Length => Col.Size,
-            SortColumn.Files => Col.Files,
-            SortColumn.Modified => Col.Modified,
-            SortColumn.Accessed => Col.Accessed,
-            SortColumn.Delta => Col.Delta,
-            _ => Col.OnDisk,
-        };
+        Col sortCol = SortCol();
         for (int i = 0; i < Columns.Count; i++)
         {
             var item = new HDITEM { mask = HDI_FORMAT };

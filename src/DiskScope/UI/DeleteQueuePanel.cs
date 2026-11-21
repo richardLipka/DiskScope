@@ -107,7 +107,7 @@ sealed class DeleteQueuePanel : UserControl
         switch (state)
         {
             case DeleteState.Waiting or DeleteState.Running: _waiting += by; break;
-            case DeleteState.Done: _done += by; _doneBytes += by * job.Size; break;
+            case DeleteState.Done: _done += by; _doneBytes += by * job.Freed; break;
             case DeleteState.Failed: _failed += by; break;
         }
     }
@@ -130,7 +130,7 @@ sealed class DeleteQueuePanel : UserControl
         var item = new ListViewItem([
             job.Path,
             Format.Size(job.Size, L.Culture),
-            L.T(job.Method == DeleteMethod.RecycleBin ? "QueueToBin" : "QueuePermanent"),
+            MethodText(job),
             StateText(job),
         ]);
         item.ForeColor = job.State switch
@@ -142,8 +142,29 @@ sealed class DeleteQueuePanel : UserControl
         return item;
     }
 
+    static string MethodText(DeleteJob job) => job.Method switch
+    {
+        DeleteMethod.RecycleBin => L.T("QueueToBin"),
+        DeleteMethod.Move => L.T("QueueMoveTo", job.Destination ?? ""),
+        DeleteMethod.Compress => L.T("QueueCompress", job.Compression.ToString().ToUpperInvariant()),
+        _ => L.T("QueuePermanent"),
+    };
+
+    static string Percent(DeleteJob job) => job.Size > 0 ? Math.Min(100, job.BytesDone * 100 / job.Size).ToString(L.Culture) + " %" : "";
+
     static string StateText(DeleteJob job) => job.State switch
     {
+        DeleteState.Running when job.Method == DeleteMethod.Move => L.T("QueueStateMoving", Percent(job)),
+        DeleteState.Running when job.Method == DeleteMethod.Compress => L.T("QueueStateCompressing", Percent(job)),
+        DeleteState.Done when job.Method == DeleteMethod.Move => L.T("QueueStateMoved", Format.Size(job.Freed, L.Culture)),
+        DeleteState.Done when job.Method == DeleteMethod.Compress && job.FailedEntries > 0 =>
+            L.T("QueueStateCompressedPartly", Format.Size(job.Freed, L.Culture), job.FailedEntries, job.Error ?? ""),
+        DeleteState.Done when job.Method == DeleteMethod.Compress => L.T("QueueStateCompressed", Format.Size(job.Freed, L.Culture)),
+        DeleteState.Failed when job.Error == FileMover.ErrorExists => L.T("QueueStateExists"),
+        DeleteState.Failed when job.Error == FileMover.ErrorIntoItself => L.T("QueueStateIntoItself"),
+        DeleteState.Failed when job.Error == FileMover.ErrorContainsLinks => L.T("QueueStateContainsLinks"),
+        DeleteState.Failed when job.Error == FileCompressor.ErrorNotNtfs => L.T("QueueStateNotNtfs"),
+        DeleteState.Failed when job.Error == DeleteJob.ErrorCompressRefused => L.T("QueueStateCompressRefused"),
         DeleteState.Failed when job.Error == DeleteJob.ErrorProtected => L.T("QueueStateProtected"),
         DeleteState.Failed when job.Error == DeleteJob.ErrorChanged => L.T("QueueStateChanged"),
         DeleteState.Failed when job.Error == FileDeleter.ErrorUnsafeName => L.T("QueueStateUnsafeName"),

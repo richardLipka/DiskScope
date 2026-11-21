@@ -9,18 +9,20 @@ DiskScope is a C# / .NET 10 WinForms application in two projects:
 ```
             ┌────────────────────────── DiskScope (WinForms) ──────────────────────────┐
             │ MainForm ─ TreeListView (virtual, owner-drawn)   panels: Find, Cleanup,  │
-            │            TreeRows (visible rows)               Abandoned, Duplicates,  │
-            │                                                  Map, Deleting           │
+            │            TreeRows + TreeFilter                 File types, Map,        │
+            │            DriveOverviewPanel                    Abandoned, Duplicates,  │
+            │                                                  Delete & move           │
             └───────────────┬───────────────────────────────────────┬──────────────────┘
                             │ reads (any thread, live)              │ jobs
-┌──────────────┐  writes  ┌─▼──────────┐   Search, CleanupFinder,   ┌─▼───────────┐
-│ ScanSession  ├─────────►│ NodeStore  │◄─ OrphanFinder, Duplicate- │ DeleteQueue ├─► FileDeleter
-│  MftScanner  │          │ (the tree) │   Finder, TreemapLayout,   │  (1 worker) │   DeletionGuard
-│  Directory-  │          └─┬────────▲─┘   FolderSummary,           └─────────────┘
-│  Scanner     │      save  │        │ load TreeComparison
-└──────────────┘          ┌─▼────────┴─┐
-                          │  Snapshot  │  data\scans\*.dscan
-                          └────────────┘
+┌──────────────┐  writes  ┌─▼──────────┐   Search, CleanupFinder,   ┌─▼───────────┐   FileDeleter
+│ ScanSession  ├─────────►│ NodeStore  │◄─ FileTypes, OrphanFinder, │ DeleteQueue ├─► FileMover
+│  MftScanner  │          │ (the tree) │   DuplicateFinder,         │  (1 worker) │   FileCompressor
+│  Directory-  │          └─┬────────▲─┘   TreemapLayout, ...       └──────┬──────┘   (all behind
+│  Scanner     │      save  │        │ load                                │           DeletionGuard)
+└──────────────┘          ┌─▼────────┴─┐  load compact  ┌─────────────┐
+                          │  Snapshot  ├───────────────►│ CompactTree │◄─ TreeComparison
+                          └────────────┘                └─────────────┘
+                          data\scans\*.dscan
 ```
 
 ## The tree: `NodeStore`
@@ -89,6 +91,10 @@ If anything fails, the session falls back to the directory scanner.
   without opening any file.
 - Reparse points (junctions, symbolic links) are recorded but not entered. Cloud placeholders are never
   hydrated.
+- Files compressed by Windows (WOF: `compact /exe`, CompactOS, DiskScope's Compress) list no reparse point and an
+  allocation of 0, because their data lives in a hidden stream. A file over 4 KB with nothing allocated and no
+  cloud attributes is therefore asked for its real size with `GetCompressedFileSize`. (The MFT scanner sums all
+  data streams, so it counts these files correctly anyway.)
 - All paths are extended (`\\?\`) paths, so long paths and names ending in a dot or space work.
 - A folder that can't be listed counts as an error, and the scan continues.
 
@@ -98,8 +104,14 @@ drive doesn't wipe that part of the tree.
 ## The view
 
 `TreeRows` turns the tree into the list of visible rows: the expanded folders, each sorted by the chosen
-column, with an optional filter (used for comparisons). It is iterative, so revealing an item 30,000 levels deep
-can't overflow the stack. Expanding every folder of a 30-million-entry tree takes about 1.4 s.
+column, with an optional filter. It is iterative, so revealing an item 30,000 levels deep can't overflow the
+stack. Expanding every folder of a 30-million-entry tree takes about 1.4 s.
+
+The row filter combines the comparison filter (grown or changed items) with **`TreeFilter`**, the view filter.
+With name patterns, `TreeFilter.Prepare` makes one parallel pass over the node table. It marks the folders that
+lead to a match and the folders whose own name matches, taking 0.9 s for 30 million entries. After that,
+deciding whether a row is shown is a set lookup. The UI prepares the filter again, at most every three seconds,
+while a scan or deletion changes the tree.
 
 `TreeListView` is a virtual WinForms `ListView` drawn by the owner: indentation, expanders, the percentage bar,
 the shell icons and greyed queued items. It asks `TreeRows` for row *i* only when that row is painted. While a
@@ -119,8 +131,27 @@ It takes about 27 bytes per entry: 30 million entries are an 824 MB file, saved 
 Loading validates every name and flag (see [Safety](safety.md)) and rejects a damaged file with a clear error.
 `SnapshotCatalog` lists the saved scans per place and deletes them.
 
-`TreeComparison` matches a current tree against an older one by path, lazily and per folder. It provides the
-size change of each node for the Change column and the filters.
+### The older scan in a comparison: `CompactTree`
+
+A comparison needs very little from the older scan: names, sizes and the shape of the tree. `Snapshot.LoadCompact`
+reads a saved scan into a **`CompactTree`**, which keeps the nodes in preorder and stores for each one only:
+
+- its size on disk;
+- the number of nodes in its subtree, with a directory bit;
+- its name, encoded as in `NodeStore`.
+
+No links are needed: the first child of node *i* is *i* + 1, and the next sibling of child *c* is
+*c* + span(*c*). That is about 19 bytes per entry plus the name. For 30 million entries it takes 906 MB, against
+2.2 GB for a full tree, so a whole-disk tree and its comparison baseline fit together in about 3 GB.
+
+`TreeComparison` matches the current tree against the compact one by path, lazily and per folder, indexing large
+folders by name on first use. It provides the size change of each node for the Change column and the filters.
+
+### Memory when opening another scan
+
+Opening a saved scan normally keeps the shown tree until the new one has loaded, so it can stay if loading fails.
+For a large tree (over 256 MB) that is saved and unchanged since, the UI lets it go first (`ReleaseTree`), and
+reopens it from its file if loading fails. Two whole-disk trees therefore never need to fit in memory at once.
 
 ## Analyses
 
@@ -132,20 +163,42 @@ All analyses read the tree only. They run on background threads and work during 
 | `CleanupFinder` + `CleanupCatalog` | Resolves catalog path patterns against the tree (environment variables, `{user}`, wildcards per segment) and finds `folderNames` anywhere. See [Cleanup catalog](cleanup-catalog.md). |
 | `OrphanFinder` + `InstalledPrograms` | Compares folders in AppData, ProgramData and Program Files with the uninstall registry keys and installed Store package families. |
 | `DuplicateFinder` | Size groups from the scan, then actual sizes, then SHA-256 of the first and last 64 KB, then a full SHA-256. Hard links are recognized by file ID. |
+| `FileTypes` | Totals per extension of a folder's files, and the largest files of one extension. Extensions are looked up by span, so a 30-million-entry walk allocates almost nothing (1.9 s). Also the extension → kind classification used by the treemap. |
 | `TreemapLayout` | Squarified treemap (Bruls, Huizing, van Wijk) over a single reading of the sizes. |
+| `DriveUsageLog` | A small JSON log (`data\drives.json`) of how full each drive was, written when a drive scan finishes and when the overview opens (at most hourly). The overview's "change since" is the used space now minus the reading closest to the last scan. |
 | `FolderSummary` + `AiPrompt` | Condensed description of a folder (largest entries, file types, largest files) for the AI question. |
 
-## Deleting
+## Deleting, moving and compressing
 
 - **`DeleteQueue`** keeps the jobs and runs them one at a time on a single STA worker thread, as the shell's
-  recycle-bin API requires. Waiting jobs are a queue with a counter, so queuing 100,000 items costs O(1) each.
-  Job changes are reported as events. The UI collects them and applies them every 200 ms in one batch: one tree
-  removal, one reload and one panel refresh per batch, not per item.
+  recycle-bin API requires. A job is a deletion (recycle bin or permanent), a move or a compression
+  (`DeleteMethod`). Waiting jobs are a queue with a counter, so queuing 100,000 items costs O(1) each.
+  Job changes, including progress of long moves and compressions (at most a few times a second), are reported
+  as events. The UI collects them and applies them every 200 ms in one batch: one tree removal, one reload and
+  one panel refresh per batch, not per item. Each job records the space it freed (`Freed`).
+- **`FileMover`** moves an item into another folder. On the same volume it renames. To another volume it copies
+  the tree iteratively, keeping attributes and times, and verifies the copy (same relative paths and sizes).
+  Only then does it delete the original with the permanent-delete walker. Any failure or cancellation before
+  that point removes the partial copy. A folder containing reparse points is refused before anything is copied.
+  Optionally `Junction.Create` leaves a junction at the old path; it is a mount-point reparse point set with
+  `FSCTL_SET_REPARSE_POINT`, which needs no privilege.
+- **`FileCompressor`** compresses files in place through WOF (`FSCTL_SET_EXTERNAL_BACKING`, the mechanism behind
+  `compact /exe`), with the XPRESS 4K/8K/16K or LZX algorithm. It measures each file's on-disk size before and
+  after with `GetCompressedFileSize`. Files below 8 KB are skipped. "Not beneficial" counts as success, and
+  files open for writing elsewhere are counted as failed.
+- **`VirtualDisk`** compacts `.vhdx`/`.vhd` files with a generated diskpart script (attach read-only, compact,
+  detach), optionally after `wsl --shutdown`. diskpart runs elevated through a UAC prompt when DiskScope isn't
+  elevated.
+- **`HardLinker`** (duplicates) replaces a copy with a hard link to the kept file: same-volume check, size and
+  time unchanged since the scan, both ends re-compared, then `CreateHardLink` under a temporary name and
+  `MoveFileEx(REPLACE_EXISTING)` over the copy.
 - **`FileDeleter`** deletes without dialogs. It uses `SHFileOperation` (confirmations and error dialogs suppressed) for the recycle bin, and for permanent
   deletion it walks the folder itself, bottom-up and iteratively, never entering reparse points and carrying on
   past locked files. `Probe` tells "gone" apart from "can't tell" (disk errors).
-- **`DeletionGuard`** is the last check before every deletion. It protects system and profile folders and
-  resolves links in parent folders. See [Safety](safety.md).
+- **`DeletionGuard`** is the last check before every deletion, move and hard-link replacement. It protects
+  system and profile folders and resolves links in parent folders. `CheckCompress` is its rule for compressing:
+  no drive roots and nothing inside Windows, for the path as given and where it really leads. See
+  [Safety](safety.md).
 
 ## Application shell
 
@@ -158,3 +211,6 @@ All analyses read the tree only. They run on background threads and work during 
 - **`ShellOpen` / `Shell`** open files (through `explorer.exe` when elevated) and show the native Windows
   context menu.
 - **`AppPaths`** uses the `data` folder next to the exe, or `%LOCALAPPDATA%\DiskScope` when that is read-only.
+- **`Theme`** applies the light, dark or system appearance through Windows Forms' color mode
+  (`Application.SetColorMode`, before the first window). It holds the colors of the custom-drawn parts (bars,
+  change column, glyphs) for both modes.

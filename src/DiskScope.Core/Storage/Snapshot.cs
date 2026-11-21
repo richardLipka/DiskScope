@@ -178,27 +178,9 @@ public static class Snapshot
                 stack.Push(top with { Remaining = top.Remaining - 1 });
             }
 
-            ushort encodedLen = (ushort)r.Read7BitEncodedInt();
-            int nameBytes = encodedLen & 0x7FFF;
-            r.BaseStream.ReadExactly(nameBuf, 0, nameBytes);
-            CheckName(nameBuf.AsSpan(0, nameBytes), (encodedLen & 0x8000) != 0, isRoot: parent == NodeStore.None);
-            // Only flags describing the item are kept; state flags (deleted, queued) never come from a file.
-            var flags = (NodeFlags)r.Read7BitEncodedInt() & PersistentFlags;
-            uint attrs = (uint)r.Read7BitEncodedInt();
-            long mtime = r.ReadInt64();
-            long atime = version >= 2 ? r.ReadInt64() : 0;
-            bool isDir = (flags & NodeFlags.Directory) != 0;
-            int childCount = 0;
-            long size = 0, length = 0;
-            if (isDir) childCount = r.Read7BitEncodedInt();
-            else
-            {
-                size = r.Read7BitEncodedInt64();
-                length = r.Read7BitEncodedInt64();
-                if (size < 0 || length < 0) throw new InvalidDataException("Negative file size in snapshot.");
-            }
-
-            int node = store.AddRaw(parent, nameBuf.AsSpan(0, nameBytes), encodedLen, flags, attrs, size, length, mtime, atime);
+            var rec = ReadRecord(r, nameBuf, version, isRoot: parent == NodeStore.None);
+            int node = store.AddRaw(parent, nameBuf.AsSpan(0, rec.NameBytes), rec.EncodedLen, rec.Flags, rec.Attributes, rec.Size, rec.Length,
+                rec.MTime, rec.ATime);
             if (parent != NodeStore.None)
             {
                 var top = stack.Pop();
@@ -206,7 +188,7 @@ public static class Snapshot
                 else store[top.Last].NextSibling = node;
                 stack.Push(top with { Last = node });
             }
-            if (isDir && childCount > 0) stack.Push((node, childCount, NodeStore.None));
+            if (rec.IsDirectory && rec.ChildCount > 0) stack.Push((node, rec.ChildCount, NodeStore.None));
             while (stack.Count > 0 && stack.Peek().Remaining == 0) stack.Pop();
 
             if (++read % 500_000 == 0)
@@ -218,6 +200,110 @@ public static class Snapshot
 
         store.RecomputeTotals();
         return store;
+    }
+
+    readonly record struct Record(ushort EncodedLen, int NameBytes, NodeFlags Flags, uint Attributes, long MTime, long ATime,
+        int ChildCount, long Size, long Length)
+    {
+        public bool IsDirectory => (Flags & NodeFlags.Directory) != 0;
+    }
+
+    /// <summary>Reads one node; its name lands in <paramref name="nameBuf"/>. Validates the name and the sizes.</summary>
+    static Record ReadRecord(BinaryReader r, byte[] nameBuf, ushort version, bool isRoot)
+    {
+        ushort encodedLen = (ushort)r.Read7BitEncodedInt();
+        int nameBytes = encodedLen & 0x7FFF;
+        r.BaseStream.ReadExactly(nameBuf, 0, nameBytes);
+        CheckName(nameBuf.AsSpan(0, nameBytes), (encodedLen & 0x8000) != 0, isRoot);
+        // Only flags describing the item are kept; state flags (deleted, queued) never come from a file.
+        var flags = (NodeFlags)r.Read7BitEncodedInt() & PersistentFlags;
+        uint attrs = (uint)r.Read7BitEncodedInt();
+        long mtime = r.ReadInt64();
+        long atime = version >= 2 ? r.ReadInt64() : 0;
+        int childCount = 0;
+        long size = 0, length = 0;
+        if ((flags & NodeFlags.Directory) != 0)
+        {
+            childCount = r.Read7BitEncodedInt();
+            if (childCount < 0) throw new InvalidDataException("Negative child count in snapshot.");
+        }
+        else
+        {
+            size = r.Read7BitEncodedInt64();
+            length = r.Read7BitEncodedInt64();
+            if (size < 0 || length < 0) throw new InvalidDataException("Negative file size in snapshot.");
+        }
+        return new Record(encodedLen, nameBytes, flags, attrs, mtime, atime, childCount, size, length);
+    }
+
+    /// <summary>
+    /// Loads a saved scan as a <see cref="CompactTree"/>: sizes and names only, a third of the memory of
+    /// <see cref="Load"/>. Used for the older scan in a comparison, so that two whole-disk trees fit in memory.
+    /// </summary>
+    public static CompactTree LoadCompact(string filePath, out SnapshotInfo info, Action<double>? progress = null, CancellationToken cancel = default)
+    {
+        try
+        {
+            return LoadCompactCore(filePath, out info, progress, cancel);
+        }
+        catch (Exception ex) when (ex is ArgumentException or OverflowException or IndexOutOfRangeException or InvalidOperationException)
+        {
+            throw new InvalidDataException("Damaged snapshot: " + ex.Message, ex);
+        }
+    }
+
+    static CompactTree LoadCompactCore(string filePath, out SnapshotInfo info, Action<double>? progress, CancellationToken cancel)
+    {
+        using var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 16);
+        info = ReadHeader(fs, filePath, out ushort version);
+        using var deflate = new DeflateStream(fs, CompressionMode.Decompress);
+        using var buffered = new BufferedStream(deflate, 1 << 20);
+        var r = new BinaryReader(buffered);
+        var tree = new CompactTree(info.Nodes);
+
+        // Each frame: a directory, how many of its children are still to be read, and the size of its files so far.
+        var stack = new Stack<(int Dir, int Remaining, long Size)>();
+        var nameBuf = new byte[1 << 16];
+        long read = 0;
+        do
+        {
+            bool isRoot = stack.Count == 0;
+            if (!isRoot)
+            {
+                var top = stack.Pop();
+                stack.Push(top with { Remaining = top.Remaining - 1 });
+            }
+            var rec = ReadRecord(r, nameBuf, version, isRoot);
+            int node = tree.Add(nameBuf.AsSpan(0, rec.NameBytes), rec.EncodedLen, rec.IsDirectory, rec.Size);
+            if (!rec.IsDirectory && !isRoot)
+            {
+                var top = stack.Pop();
+                stack.Push(top with { Size = top.Size + rec.Size });
+            }
+            if (rec.IsDirectory)
+            {
+                if (rec.ChildCount > 0) stack.Push((node, rec.ChildCount, 0));
+                else tree.Close(node, 0);
+            }
+            // Finished directories pass their total up to the parent.
+            while (stack.Count > 0 && stack.Peek().Remaining == 0)
+            {
+                var done = stack.Pop();
+                tree.Close(done.Dir, done.Size);
+                if (stack.Count > 0)
+                {
+                    var parent = stack.Pop();
+                    stack.Push(parent with { Size = parent.Size + done.Size });
+                }
+            }
+
+            if (++read % 500_000 == 0)
+            {
+                progress?.Invoke((double)read / Math.Max(1, info.Nodes));
+                cancel.ThrowIfCancellationRequested();
+            }
+        } while (stack.Count > 0);
+        return tree;
     }
 
     const NodeFlags PersistentFlags = NodeFlags.Directory | NodeFlags.Scanned | NodeFlags.Error | NodeFlags.Reparse | NodeFlags.HardLink;

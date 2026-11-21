@@ -2,17 +2,24 @@ namespace DiskScope.Core;
 
 /// <summary>
 /// Matches nodes of the current tree to an older one by path, lazily and with caching,
-/// to tell how much each file or folder has grown or shrunk since then.
+/// to tell how much each file or folder has grown or shrunk since then. The older tree is a
+/// <see cref="CompactTree"/>, so two whole-disk scans fit in memory together.
 /// </summary>
 public sealed class TreeComparison
 {
     const int IndexThreshold = 24;
 
     readonly NodeStore _current;
-    readonly Dictionary<int, int> _match = [];
-    readonly Dictionary<int, Dictionary<string, int>> _childIndex = [];
+    // Concurrent, so that rows, the treemap or a background analysis may ask from different threads.
+    readonly System.Collections.Concurrent.ConcurrentDictionary<int, int> _match = [];
+    readonly System.Collections.Concurrent.ConcurrentDictionary<int, Dictionary<string, int>> _childIndex = [];
 
-    public TreeComparison(NodeStore current, NodeStore baseline)
+    /// <summary>Compares with a full tree (converted to a compact copy).</summary>
+    public TreeComparison(NodeStore current, NodeStore baseline) : this(current, CompactTree.From(baseline))
+    {
+    }
+
+    public TreeComparison(NodeStore current, CompactTree baseline)
     {
         _current = current;
         Baseline = baseline;
@@ -20,7 +27,7 @@ public sealed class TreeComparison
         _match[current.Root] = baseline.FindPath(current.RootPath);
     }
 
-    public NodeStore Baseline { get; }
+    public CompactTree Baseline { get; }
 
     /// <summary>The matching node in the baseline, or <see cref="NodeStore.None"/> when the item is new.</summary>
     public int Match(int node)
@@ -42,7 +49,7 @@ public sealed class TreeComparison
         while (chain.Count > 0)
         {
             int n = chain.Pop();
-            m = m == NodeStore.None || !Baseline[m].IsDirectory ? NodeStore.None : FindChild(m, _current.GetName(n));
+            m = m == NodeStore.None || !Baseline.IsDirectory(m) ? NodeStore.None : FindChild(m, _current.GetName(n));
             _match[n] = m;
         }
         return m;
@@ -52,13 +59,10 @@ public sealed class TreeComparison
     {
         if (!_childIndex.TryGetValue(baseDir, out var index))
         {
-            int count = 0;
-            for (int c = Baseline[baseDir].FirstChild; c != NodeStore.None && count <= IndexThreshold; c = Baseline[c].NextSibling) count++;
-            if (count <= IndexThreshold) return Baseline.FindChild(baseDir, name);
+            if (Baseline.Children(baseDir).Take(IndexThreshold + 1).Count() <= IndexThreshold) return Baseline.FindChild(baseDir, name);
             index = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-            for (int c = Baseline[baseDir].FirstChild; c != NodeStore.None; c = Baseline[c].NextSibling)
-                index.TryAdd(Baseline.GetName(c), c);
-            _childIndex[baseDir] = index;
+            foreach (int c in Baseline.Children(baseDir)) index.TryAdd(Baseline.GetName(c), c);
+            index = _childIndex.GetOrAdd(baseDir, index); // built completely before it is shared
         }
         return index.TryGetValue(name, out int found) ? found : NodeStore.None;
     }
@@ -69,7 +73,7 @@ public sealed class TreeComparison
     public long Delta(int node)
     {
         int b = Match(node);
-        return _current[node].Size - (b == NodeStore.None ? 0 : Baseline[b].Size);
+        return _current[node].Size - (b == NodeStore.None ? 0 : Baseline.Size(b));
     }
 
     /// <summary>Items of the baseline folder that no longer exist, with their former sizes.</summary>
@@ -78,10 +82,10 @@ public sealed class TreeComparison
         var list = new List<(string, long, bool)>();
         int b = Match(dir);
         if (b == NodeStore.None) return list;
-        for (int c = Baseline[b].FirstChild; c != NodeStore.None; c = Baseline[c].NextSibling)
+        foreach (int c in Baseline.Children(b))
         {
             string name = Baseline.GetName(c);
-            if (_current.FindChild(dir, name) == NodeStore.None) list.Add((name, Baseline[c].Size, Baseline[c].IsDirectory));
+            if (_current.FindChild(dir, name) == NodeStore.None) list.Add((name, Baseline.Size(c), Baseline.IsDirectory(c)));
         }
         return list;
     }

@@ -10,6 +10,9 @@ sealed partial class MainForm
     readonly SnapshotCatalog _catalog = new(Path.Combine(AppPaths.DataDir, "scans"));
     readonly ToolStripDropDownButton _history = new();
     SnapshotInfo? _loaded;
+    /// <summary>The saved file that holds the shown tree, and the tree's version then: while they match, the tree can be reopened from it.</summary>
+    string? _treeFile;
+    int _treeFileVersion;
     bool _saving;
     Task? _saveTask;
     bool _loading;
@@ -79,6 +82,11 @@ sealed partial class MainForm
         _saving = false;
         // Closing the window waits for the save; by the time this continuation runs the window may be gone.
         if (IsDisposed) return;
+        if (error == null && _session == session)
+        {
+            _treeFile = file;
+            _treeFileVersion = session.Store.Version;
+        }
         UpdateButtons();
         UpdateStatus();
         _status.Text += "  ·  " + (error == null ? L.T("Saved") : L.T("SaveFailed", error));
@@ -87,6 +95,15 @@ sealed partial class MainForm
     async void LoadSnapshot(SnapshotInfo info)
     {
         if (IsBusy) return;
+        // A whole-disk tree takes gigabytes. If the shown one is saved unchanged, let it go before loading the next,
+        // so that the two never need to fit in memory together; should loading fail, it is reopened from its file.
+        string? restore = null;
+        if (_rows != null && _treeFile != null && _treeFile != info.FilePath && _rows.Store.Version == _treeFileVersion &&
+            _rows.Store.MemoryUsage > ReleaseThreshold && File.Exists(_treeFile))
+        {
+            restore = _treeFile;
+            ReleaseTree();
+        }
         _loading = true;
         UpdateButtons();
         _status.Text = L.T("Loading", 0);
@@ -107,22 +124,63 @@ sealed partial class MainForm
         {
             _session = null;
             _loaded = info;
+            _treeFile = info.FilePath;
+            _treeFileVersion = store.Version;
             SelectTarget(info.RootPath);
             ShowStore(store);
         }
-        else MessageBox.Show(this, L.T("LoadFailed", error ?? "?"), Text, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        else
+        {
+            MessageBox.Show(this, L.T("LoadFailed", error ?? "?"), Text, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            if (restore != null)
+            {
+                SnapshotInfo? previous = null;
+                try { previous = Snapshot.ReadInfo(restore); } catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException) { }
+                if (previous != null)
+                {
+                    LoadSnapshot(previous);
+                    return;
+                }
+            }
+        }
         UpdateButtons();
         UpdateStatus();
         SnapshotLoaded?.Invoke();
     }
 
+    /// <summary>Trees smaller than this are kept while another loads; releasing them would only make the view flicker.</summary>
+    const long ReleaseThreshold = 256L << 20;
+
+    /// <summary>Lets go of the shown tree and everything that refers to it (the view, the panels, a comparison).</summary>
+    void ReleaseTree()
+    {
+        _rows = null;
+        _tree.Rows = null;
+        _session = null;
+        _loaded = null;
+        _treeFile = null;
+        _compare = null; // the baseline itself is kept in _compareBaseline and reattached to the next tree
+        _rescanQueue.Clear();
+        _search.SetStore(null);
+        _cleanup.SetStore(null);
+        SetAnalysisStore(null);
+        UpdateBreadcrumb();
+        UpdateDetail();
+        GC.Collect();
+    }
+
+    internal bool TreeReleasableForTest => _rows != null && _treeFile != null && _rows.Store.Version == _treeFileVersion;
+
     /// <summary>Raised after a saved scan has been opened; used by the test hooks.</summary>
     public event Action? SnapshotLoaded;
 
-    void LoadLastOnStart()
+    /// <summary>Opens the last scan of the selected target if the setting asks for it; false when nothing was opened.</summary>
+    bool LoadLastOnStart()
     {
-        if (!_settings.LoadLastOnStart || SelectedTarget is not string target) return;
-        if (_catalog.LatestFor(target) is SnapshotInfo latest) LoadSnapshot(latest);
+        if (!_settings.LoadLastOnStart || SelectedTarget is not string target) return false;
+        if (_catalog.LatestFor(target) is not SnapshotInfo latest) return false;
+        LoadSnapshot(latest);
+        return true;
     }
 
     string LoadedStatusLine(SnapshotInfo info)

@@ -229,7 +229,7 @@ public class MftTests(ITestOutputHelper output)
     }
 
     [Fact]
-    public void ParentCyclesAreDroppedSoNothingLoops()
+    public async Task ParentCyclesAreDroppedSoNothingLoops()
     {
         var store = new NodeStore();
         store.CreateRoot(@"T:\");
@@ -255,7 +255,7 @@ public class MftTests(ITestOutputHelper output)
             Assert.Empty(new DiskScope.Core.Duplicates.DuplicateFinder { MinSize = 1, Scope = store.FindPath(@"T:\fine.bin") }
                 .Find(store, new DiskScope.Core.Duplicates.DuplicateProgress()));
         });
-        Assert.True(task.Wait(TimeSpan.FromSeconds(20)), "analysis hung on a parent cycle");
+        await task.WaitAsync(TimeSpan.FromSeconds(20)); // an analysis hung on a parent cycle fails with a timeout
     }
 
     [Fact]

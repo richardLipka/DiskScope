@@ -26,7 +26,8 @@ sealed partial class MainForm
     void BuildMenu()
     {
         _menu.Items.AddRange([_miOpen, _miReveal, _miCopy, _miAi, _miRescan, _miDuplicates, new ToolStripSeparator(), _miRecycle, _miDelete,
-            new ToolStripSeparator(), _miWindows]);
+            new ToolStripSeparator(), _miMove, _miCompress, _miCompact, new ToolStripSeparator(), _miWindows]);
+        BuildFreeSpaceMenu();
         _miAi.Click += (_, _) => CopyAiPrompt(_tree.FocusedNode);
         _miOpen.Click += (_, _) => OpenSelected();
         _miReveal.Click += (_, _) => RevealSelected();
@@ -57,6 +58,7 @@ sealed partial class MainForm
             _miRescan.Enabled = single && _rows.Store[nodes[0]].IsDirectory && !IsBusy;
             _miDuplicates.Enabled = single && _rows.Store[nodes[0]].IsDirectory;
             _miRecycle.Enabled = _miDelete.Enabled = !isRoot && !IsBusy;
+            UpdateFreeSpaceMenu(nodes, isRoot);
             _miWindows.Enabled = !IsBusy;
         };
         _tree.ContextMenuStrip = _menu;
@@ -85,6 +87,7 @@ sealed partial class MainForm
         _miWindows.Text = L.T("WindowsMenu") + (Elevation.IsElevated ? "  " + L.T("WindowsMenuElevated") : "") + "  (Shift+…)";
         _miAi.Text = L.T("CopyAiPrompt");
         _miDuplicates.Text = L.T("DupInFolder");
+        ApplyFreeSpaceTexts();
     }
 
     void CopyAiPrompt(int node)

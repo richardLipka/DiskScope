@@ -48,6 +48,7 @@ sealed partial class MainForm : Form
         KeyPreview = true;
 
         BuildToolbar();
+        BuildFilter();
         BuildColumns();
         BuildMenu();
         _detail.Height = LogicalToDeviceUnits(26);
@@ -58,6 +59,7 @@ sealed partial class MainForm : Form
         BuildSearch();
         BuildDeleteQueue();
         BuildAnalysis();
+        BuildOverview();
         _bottomTabs.TabPages.Add(_deleteTab);
         Controls.Add(_split);
         Controls.Add(_detail);
@@ -78,7 +80,7 @@ sealed partial class MainForm : Form
         Load += (_, _) =>
         {
             if (autoScan) StartScan();
-            else LoadLastOnStart();
+            else if (!LoadLastOnStart()) ShowOverview(true);
         };
     }
 
@@ -127,7 +129,7 @@ sealed partial class MainForm : Form
         }
         BuildHistory();
         BuildCompare();
-        _toolbar.Items.AddRange([_target, _browse, new ToolStripSeparator(), _scan, _stop, new ToolStripSeparator(), _history, _filter,
+        _toolbar.Items.AddRange([_drivesButton, new ToolStripSeparator(), _target, _browse, new ToolStripSeparator(), _scan, _stop, new ToolStripSeparator(), _history, _filter,
             new ToolStripSeparator(), _searchButton, _cleanupButton, _analysisMenu, _up, _settingsMenu, _language, _admin]);
         BuildSettings();
         FillTargets();
@@ -169,6 +171,8 @@ sealed partial class MainForm : Form
         ApplyQueueTexts();
         ApplySettingsTexts();
         ApplyAnalysisTexts();
+        ApplyFilterTexts();
+        ApplyOverviewTexts();
         string? selected = SelectedTarget;
         FillTargets();
         if (selected != null) SelectTarget(selected);
@@ -251,6 +255,7 @@ sealed partial class MainForm : Form
         if (path == null || IsBusy) return;
         _settings.LastPath = path;
         _loaded = null;
+        _treeFile = null;
         _session = new ScanSession(path);
         _session.Finished += s => PostToUi(() => OnScanFinished(s));
         _session.Start();
@@ -294,9 +299,11 @@ sealed partial class MainForm : Form
     {
         // Read the version before building the rows: a scan running meanwhile then shows up on the next tick.
         _shownVersion = store.Version;
+        ShowOverview(false, force: true);
         _rows = new TreeRows(store);
         _tree.Rows = _rows;
         ReattachCompare();
+        if (_viewFilter != null) ApplyViewFilter();
         _search.SetStore(store);
         _cleanup.SetStore(store);
         SetAnalysisStore(store);
@@ -320,6 +327,7 @@ sealed partial class MainForm : Form
             ShowError(L.T("ScanFailed", why));
         }
         ApplyDeferredJobs();
+        RecordDriveUsage(session);
         if (session.State == ScanState.Completed && _settings.AutoSave) SaveSnapshot(session);
         RefreshBottomPanel();
         ScanCompleted?.Invoke();
@@ -336,6 +344,7 @@ sealed partial class MainForm : Form
             _tree.Reload();
             UpdateDetail();
         }
+        RefreshViewFilterIfStale();
         UpdateStatus();
     }
 
@@ -438,7 +447,13 @@ sealed partial class MainForm : Form
     void UpdateBreadcrumb()
     {
         _breadcrumb.SuspendLayout();
-        _breadcrumb.Items.Clear();
+        // Only the path buttons are rebuilt; the filter on the right stays.
+        foreach (var item in _crumbs)
+        {
+            _breadcrumb.Items.Remove(item);
+            item.Dispose();
+        }
+        _crumbs.Clear();
         if (_rows != null && _rows.Store.Root != NodeStore.None)
         {
             var chain = new List<int>();
@@ -446,13 +461,14 @@ sealed partial class MainForm : Form
             chain.Reverse();
             foreach (int node in chain)
             {
-                if (_breadcrumb.Items.Count > 0) _breadcrumb.Items.Add(new ToolStripLabel("›") { ForeColor = SystemColors.GrayText });
+                if (_crumbs.Count > 0) _crumbs.Add(new ToolStripLabel("›") { ForeColor = SystemColors.GrayText });
                 var b = new ToolStripButton(_rows.Store.GetName(node)) { Tag = node };
                 if (node == _rows.ViewRoot) b.Font = new Font(b.Font, FontStyle.Bold);
                 b.Click += (_, _) => ZoomTo((int)b.Tag!);
-                _breadcrumb.Items.Add(b);
+                _crumbs.Add(b);
             }
         }
+        for (int i = 0; i < _crumbs.Count; i++) _breadcrumb.Items.Insert(i, _crumbs[i]);
         _breadcrumb.ResumeLayout();
         _up.Enabled = _rows != null && _rows.Store.Root != NodeStore.None && _rows.ViewRoot != _rows.Store.Root;
     }

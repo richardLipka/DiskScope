@@ -99,6 +99,27 @@ public sealed class DeletionGuard(Func<string, string>? expand = null)
         return Verdict.Allowed;
     }
 
+    /// <summary>
+    /// Compressing in place: refused for drive roots and for anything in Windows (compact /compactos is the tool for
+    /// that), both for the path as given and for where it really leads, links included. Program and profile folders
+    /// may be compressed: that is what compressing installed programs is about.
+    /// </summary>
+    public Verdict CheckCompress(string path)
+    {
+        var verdict = CheckCompressAt(path);
+        if (verdict != Verdict.Allowed) return verdict;
+        return Native.NativeMethods.FinalPath(path) is string real ? CheckCompressAt(StripPrefix(real)) : verdict;
+    }
+
+    Verdict CheckCompressAt(string path)
+    {
+        string full = StripPrefix(Path.GetFullPath(StripPrefix(path))).TrimEnd('\\');
+        string[] target = Split(full);
+        if (target.Length <= 1 || full.StartsWith(@"\\", StringComparison.Ordinal) && target.Length <= 2) return Verdict.DriveRoot;
+        string[] windows = Split(_expand("%SystemRoot%"));
+        return target.Length >= windows.Length && SegmentsMatch(windows, target, windows.Length) ? Verdict.InsideWindows : Verdict.Allowed;
+    }
+
     static string[] Split(string path) => path.TrimEnd('\\').Split('\\', StringSplitOptions.RemoveEmptyEntries);
 
     /// <summary>Compares the first <paramref name="count"/> segments, wildcards in the pattern allowed.</summary>

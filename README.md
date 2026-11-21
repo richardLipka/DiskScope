@@ -20,12 +20,22 @@ tree you can browse while the scan is still running. It is built to answer one q
 - **Size on disk first.** Allocated size is shown alongside logical size, file and folder counts, and the
   newest modification and access time inside each folder. Hard links are counted once. Junctions and
   symbolic links are not followed, and OneDrive cloud-only files are not downloaded.
+- **Drive overview** to start from: every drive with how full it is, its last scan and how much it has grown
+  since then.
 - **Deleting without the drama.** Deleted items go into a queue and are removed one at a time in the
   background, with no Windows dialogs. You keep working and keep adding items. Drive roots, Windows,
   Program Files and user profile folders are protected whatever you select ([details](docs/safety.md)).
+- **Free space without deleting:**
+  - **Move to another drive**, copied and checked before the original goes, optionally leaving a junction so
+    programs still find it.
+  - **Compress** rarely changed data in place with Windows' own compression (LZX, XPRESS).
+  - **Compact the virtual disks** of WSL and Docker.
+  - **Replace duplicates with hard links**: every name stays, the content is stored once.
 - **Find what to delete:**
   - **Search** for the largest files, for folders by their own content, by name, size and age, including
     "not opened for a year".
+  - **File types**: which kinds of files fill a folder, and the largest files of each.
+  - **Tree filter** (Ctrl+L): show only `*.iso; *.vhdx` or items above 1 GB, with the folders leading to them.
   - **Cleanup**: a catalog of 64 known places, such as temp folders, browser and developer caches
     (npm, Maven, Gradle, NuGet, pip, Cargo…), crash dumps, AI models and Docker/WSL disks. Each one comes
     with a safety rating and advice. The catalog is a plain JSON file you can extend.
@@ -33,20 +43,27 @@ tree you can browse while the scan is still running. It is built to answer one q
     program.
   - **Duplicates**: files with the same content, checked step by step on request.
   - **Treemap**: area shows size, color shows file type.
-  - **Compare with an earlier scan** to see what has grown.
+  - **Compare with an earlier scan** to see what has grown. The earlier scan is kept compactly, so even two
+    whole-disk scans fit in memory together.
   - **Copy question for AI** builds a description of a folder that you can paste into any AI assistant
     to ask what it is and whether it can go. DiskScope itself never sends anything anywhere.
 - **Saved scans.** Finished scans are saved compressed and the last one opens instantly next time. The
   Saved data window deletes them individually or all at once.
 - **Portable.** It is a single `.exe`: nothing is installed, and settings live in a `data` folder next to it.
   An optional "Analyze in DiskScope" entry can be added to Explorer's context menu (per user, no admin rights needed).
-- **Czech and English** user interface.
+- **Czech and English** user interface, **light or dark** appearance, type-to-find in the tree.
 
-| Treemap | Cleanup |
+| Drive overview | File types |
 |---|---|
-| ![Treemap of C:\Windows](docs/images/treemap.png) | ![Cleanup panel](docs/images/cleanup.png) |
+| ![Drive overview](docs/images/overview.png) | ![File types of C:\Windows](docs/images/file-types.png) |
 
-![Search panel listing the largest files](docs/images/search.png)
+| Tree filter | Dark appearance with treemap |
+|---|---|
+| ![Tree filtered to large installers](docs/images/filter.png) | ![Dark appearance with the treemap](docs/images/dark.png) |
+
+| Cleanup | Search |
+|---|---|
+| ![Cleanup panel](docs/images/cleanup.png) | ![Search panel listing the largest files](docs/images/search.png) |
 
 ## Getting started
 
@@ -56,8 +73,9 @@ to be installed.
 1. Download `DiskScope.exe` from [Releases](https://github.com/richardLipka/DiskScope/releases), or build it
    (see below). The executable is not code-signed yet, so Windows SmartScreen may warn that it is from an
    unknown publisher: choose **More info → Run anyway**. Each release lists the file's SHA-256 checksum.
-2. Run it, pick a drive or folder at the top left and press **Scan**.
-3. Browse the tree; sizes update live. Right-click an item for Explorer, delete, rescan and more.
+2. Run it. The drive overview lists your drives: double-click one to scan it, or pick a folder at the top left
+   and press **Scan**.
+3. Browse the tree; sizes update live. Right-click an item to delete, move, compress, rescan and more.
 
 For the fast MFT scan of an NTFS drive, use **Run as administrator** in the toolbar. Without administrator
 rights, DiskScope lists folders the normal way, which works on any file system (NTFS, ReFS, exFAT, FAT32).

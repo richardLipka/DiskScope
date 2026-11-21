@@ -6,6 +6,10 @@ public enum DeleteMethod
 {
     RecycleBin,
     Permanent,
+    /// <summary>Move to <see cref="DeleteJob.Destination"/> (frees the space when that is another drive).</summary>
+    Move,
+    /// <summary>Compress in place with Windows' file compression.</summary>
+    Compress,
 }
 
 /// <summary>Outcome of deleting one item: whether it is gone, and how many entries inside could not be deleted.</summary>
@@ -96,6 +100,13 @@ public sealed class FileDeleter : IFileDeleter
             return (PathState.Missing, null);
         }
         return (PathState.Unavailable, new System.ComponentModel.Win32Exception(code).Message);
+    }
+
+    /// <summary>Deletes a file or folder tree given by its extended path, as permanent deletion does (used by moving).</summary>
+    internal static void DeleteTreeAt(string fullPath, ref int failed, ref string? error, CancellationToken cancel)
+    {
+        if (Directory.Exists(fullPath)) DeleteTree(new DirectoryInfo(fullPath), ref failed, ref error, cancel);
+        else if (File.Exists(fullPath)) DeleteTree(new FileInfo(fullPath), ref failed, ref error, cancel);
     }
 
     static bool IsFileSystemError(Exception ex) => ex is IOException or UnauthorizedAccessException or System.Security.SecurityException;

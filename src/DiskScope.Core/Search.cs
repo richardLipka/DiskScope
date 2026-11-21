@@ -125,12 +125,12 @@ public static class Search
         return false;
     }
 
-    static string[] ParsePatterns(string? text) => string.IsNullOrWhiteSpace(text)
+    internal static string[] ParsePatterns(string? text) => string.IsNullOrWhiteSpace(text)
         ? []
         : text.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Select(p => p.Contains('*') || p.Contains('?') ? p : "*" + p + "*").ToArray();
 
-    static bool Matches(string[] patterns, ReadOnlySpan<char> name)
+    internal static bool Matches(string[] patterns, ReadOnlySpan<char> name)
     {
         foreach (var p in patterns)
             if (FileSystemName.MatchesSimpleExpression(p, name, ignoreCase: true)) return true;

@@ -19,9 +19,16 @@ velikosti všech složek a umožní rychle najít, kde zabírají místo velké 
   za desítky sekund. Pevné odkazy (hardlinky) se započítají jen jednou. Bez práv správce nebo na jiném
   souborovém systému se automaticky použije procházení složek.
 - Junctions a symbolické odkazy se nenásledují (nic se nezapočítá dvakrát), cloudové soubory OneDrive se nestahují.
+- **Přehled disků** na úvod: zaplnění každého disku, poslední sken a o kolik od něj disk narostl.
 - **Mazání přes frontu**: smazané položky se řadí do fronty a mažou se jedna po druhé na pozadí, bez
-  dialogů Windows. Můžete dál pracovat a přidávat další. Panel Mazání ukazuje stav každé položky a umí
-  frontu pozastavit nebo zrušit. Trvalé mazání přeskočí zamčené soubory a nikdy nenásleduje junction.
+  dialogů Windows. Můžete dál pracovat a přidávat další. Panel Mazání a přesuny ukazuje stav každé položky a
+  umí frontu pozastavit nebo zrušit. Trvalé mazání přeskočí zamčené soubory a nikdy nenásleduje junction.
+- **Uvolnění místa bez mazání**:
+  - *přesun na jiný disk*: nejdřív kopie, kontrola, teprve pak smazání originálu; volitelně zůstane
+    na původním místě odkaz (junction), aby data programy dál našly;
+  - *komprese* málo měněných dat přímo na místě vestavěnou kompresí Windows (LZX, XPRESS);
+  - *zmenšení virtuálních disků* WSL a Dockeru;
+  - *nahrazení duplicit pevnými odkazy*: všechny názvy zůstanou, obsah je uložený jednou.
 - Zobrazení v Průzkumníku, otevření výchozí aplikací, kopírování cesty, nový sken složky a plné
   kontextové menu Windows (Shift + pravé tlačítko).
 - **Analýzy**:
@@ -30,6 +37,8 @@ velikosti všech složek a umožní rychle najít, kde zabírají místo velké 
   - *Duplicity* (na vyžádání): soubory se stejným obsahem. Porovnává se velikost, pak začátek a konec
     souboru, nakonec celý obsah. Hardlinky se nehlásí, soubory jen v cloudu se nestahují.
   - *Mapa* (treemap): plocha odpovídá velikosti, barva typu souboru.
+  - *Typy souborů*: jaké druhy souborů složku plní a jejich největší soubory.
+- **Filtr stromu** (Ctrl+L): jen `*.iso; *.vhdx` nebo položky nad 1 GB, se složkami, které k nim vedou.
 - **Položka „Analyzovat v DiskScope“** v kontextové nabídce Průzkumníku (volitelně, v nabídce ⚙).
 - **Ukládání skenů**: dokončené skeny se ukládají a při dalším spuštění se poslední hned otevře. V okně
   Uložená data jde každý sken nebo všechny najednou smazat.
@@ -47,7 +56,7 @@ velikosti všech složek a umožní rychle najít, kde zabírají místo velké 
 - **Kopírovat dotaz pro AI** (Ctrl+Shift+C): sestaví popis souboru nebo složky (velikost, data, největší
   položky, typy souborů) s otázkami, k čemu slouží a zda je bezpečné ji smazat. Vložíte ho do libovolného AI
   asistenta. Aplikace sama nic neodesílá.
-- Rozhraní v češtině a angličtině.
+- Rozhraní v češtině a angličtině, světlý nebo tmavý vzhled, hledání psaním přímo ve stromu.
 
 ## Ovládání
 
@@ -61,6 +70,8 @@ velikosti všech složek a umožní rychle najít, kde zabírají místo velké 
 | F5 | znovu skenovat složku |
 | Ctrl+C | kopírovat cestu |
 | Ctrl+F | hledání a největší soubory |
+| Ctrl+L | filtr stromu (Esc zruší) |
+| písmena | skok na položku začínající na ně |
 | klik na záhlaví | řazení |
 
 ## Spuštění
